@@ -1,0 +1,31 @@
+# config/strategy.yaml
+# THE ONLY FILE THE AUTORESEARCH LOOP MAY MODIFY
+# All values must stay within the bounds defined in loops/program.md
+
+indicators:
+  rsi:
+    period: 14          # bounds: [7, 30]
+    overbought: 70      # bounds: [60, 85]
+    oversold: 30        # bounds: [15, 40]
+  macd:
+    fast: 12            # bounds: [5, 21]
+    slow: 26            # bounds: [15, 50]
+    signal: 9           # bounds: [5, 15]
+  bollinger:
+    period: 20          # bounds: [10, 30]
+    std: 2.0            # bounds: [1.5, 3.0]
+  sma_fast: 20          # bounds: [10, 30]
+  sma_slow: 50          # bounds: [30, 100]
+  volume_lookback: 20   # bounds: [10, 30]
+
+signal:
+  min_confidence: 0.6   # bounds: [0.4, 0.9]
+  volume_filter: true   # bool
+  volume_multiplier: 1.5 # bounds: [1.0, 3.0]
+
+position_sizing:
+  risk_per_trade_pct: 2.0     # bounds: [0.5, 5.0] — % of portfolio per trade
+  stop_loss_vol_mult: 2.0     # bounds: [0.5, 4.0] — stop = entry - N * daily_vol
+  take_profit_vol_mult: 4.0   # bounds: [1.0, 8.0] — TP = entry + N * daily_vol
+
+timeframe: "1h"         # allowed: ["15m", "30m", "1h", "4h"]

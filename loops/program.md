@@ -1,0 +1,88 @@
+# Trading Strategy Autoresearch — program.md
+# Human edits this file. The agent reads it and follows it exactly.
+
+## Your role
+You are an autonomous trading strategy researcher running inside Claude Code.
+Your job is to improve the EVAL_SCORE of this paper-trading crypto bot by modifying
+`config/strategy.yaml` one experiment at a time.
+
+EVAL_SCORE = sharpe * (1 - max_drawdown_pct/100) * min(n_trades/10, 1.0)
+Higher is better. This rewards Sharpe ratio, penalises drawdown, and discounts
+strategies with fewer than 10 trades (avoids curve-fitting on tiny samples).
+
+## Setup (first iteration only)
+1. Create branch: `git checkout -b strategy-autoexp/$(date +%b%d)` (init git first if needed: `git init && git add -A && git commit -m "baseline"`)
+2. Read: CLAUDE.md, loops/program.md (this file), config/strategy.yaml, scripts/eval_harness.py (do not modify)
+3. Establish baseline: run the eval command below, record in loops/results.tsv
+4. Begin experimenting.
+
+## Eval command (always the same)
+```bash
+python scripts/eval_harness.py --symbol BTCUSDT --days 90 --output-json loops/latest_eval.json > loops/run.log 2>&1
+grep "^EVAL_SCORE:" loops/run.log
+```
+
+## Experiment loop (repeat)
+For each iteration:
+1. **Hypothesis** — one small, coherent change to `config/strategy.yaml`.
+   Examples: RSI period 14→18, tighten stop_loss_vol_mult, change rsi_oversold threshold.
+   Document reasoning in the commit message.
+2. **Apply** — edit `config/strategy.yaml` ONLY.
+3. **Commit**:
+   ```bash
+   git add config/strategy.yaml
+   git commit -m "exp: <what you changed and why>"
+   ```
+4. **Eval** — run eval command above.
+5. **Parse** — `grep "^EVAL_SCORE:" loops/run.log`
+   - If empty → run crashed. Check `tail -20 loops/run.log`. Max 2 fix attempts, then revert.
+6. **Keep or revert**:
+   - New EVAL_SCORE strictly > previous best → keep
+   - Otherwise → `git reset --hard HEAD~1`
+7. **Log** (append to loops/results.tsv — do NOT git-add):
+   ```
+   <commit_hash>\t<eval_score>\t<keep|revert>\t<description>
+   ```
+8. Repeat.
+
+## Allowed files (agent may ONLY edit)
+- `config/strategy.yaml`
+
+## Forbidden files (never touch)
+- `scripts/eval_harness.py`
+- `src/safety/paper_trading.py`
+- `src/apis/binance_client.py`
+- `.env`
+- Any file not listed under Allowed
+
+## Parameter bounds (hard limits)
+See bounds comments in `config/strategy.yaml`. Never go outside them.
+
+| Parameter | Min | Max |
+|-----------|-----|-----|
+| rsi.period | 7 | 30 |
+| rsi.overbought | 60 | 85 |
+| rsi.oversold | 15 | 40 |
+| macd.fast | 5 | 21 |
+| macd.slow | 15 | 50 |
+| bollinger.period | 10 | 30 |
+| bollinger.std | 1.5 | 3.0 |
+| volume_multiplier | 1.0 | 3.0 |
+| risk_per_trade_pct | 0.5 | 5.0 |
+| stop_loss_vol_mult | 0.5 | 4.0 |
+| take_profit_vol_mult | 1.0 | 8.0 |
+
+## Strategy hints
+- Change one parameter at a time (easier to attribute causality)
+- If RSI/EMA tuning shows no improvement after 5 tries, change the oversold/overbought thresholds
+- Strategies with n_trades < 5 over 90 days are likely overfitting
+- Note negative results in commit messages so future iterations skip them
+- A good session = 10–20 experiments (~6–12/hour)
+
+## Safety invariants (always true)
+- PAPER_TRADING=true enforced at safety module level — do not change
+- Max order $100, max 10 positions, max 20% drawdown — in safety module, not configurable here
+
+## Stopping condition
+Stop when: human stops you, OR 50 experiments logged with no improvement in last 20.
+Then summarise the best config and 5 most impactful changes found.
