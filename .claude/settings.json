@@ -1,11 +1,29 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd /home/amo/Documents/crypto-bot && python -m src.cli *)",
-      "Bash(cd /home/amo/Documents/crypto-bot && python -m src.mcp*)",
+      "Bash(python -m src.cli *)",
+      "Bash(python -m src.mcp*)",
+      "Bash(python scripts/*)",
+      "Bash(python -c *)",
       "Bash(pip install *)",
       "Bash(pip list *)",
-      "Bash(python -c *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git reset *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git push *)",
+      "Bash(git rev-parse *)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(echo *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(du -sh *)",
+      "Bash(grep *)",
+      "Bash(mkdir *)",
+      "Bash(rm -rf *)"
     ]
   }
 }

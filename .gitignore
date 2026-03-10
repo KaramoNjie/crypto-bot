@@ -125,3 +125,5 @@ loops/results.tsv
 loops/run.log
 loops/latest_eval.json
 .env.test
+.claude/settings.local.json
+.zed/

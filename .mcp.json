@@ -3,14 +3,12 @@
     "binance-mcp": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "src.mcp.binance_server"],
-      "cwd": "/home/amo/Documents/crypto-bot"
+      "args": ["-m", "src.mcp.binance_server"]
     },
     "trading-db-mcp": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "src.mcp.db_server"],
-      "cwd": "/home/amo/Documents/crypto-bot"
+      "args": ["-m", "src.mcp.db_server"]
     }
   }
 }
