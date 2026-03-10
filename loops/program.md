@@ -18,9 +18,14 @@ strategies with fewer than 10 trades (avoids curve-fitting on tiny samples).
 
 ## Eval command (always the same)
 ```bash
-python scripts/eval_harness.py --symbol BTCUSDT --days 90 --output-json loops/latest_eval.json > loops/run.log 2>&1
+python scripts/eval_harness.py --days 90 --output-json loops/latest_eval.json > loops/run.log 2>&1
 grep "^EVAL_SCORE:" loops/run.log
 ```
+
+Tests all 4 coins: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT.
+EVAL_SCORE = mean(per-coin scores) * coverage_factor
+coverage_factor = fraction of coins that produced at least 1 trade
+A strategy that only works on BTC gets 0.25x penalty on the aggregate score.
 
 ## Experiment loop (repeat)
 For each iteration:

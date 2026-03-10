@@ -5,8 +5,16 @@ scripts/eval_harness.py — IMMUTABLE eval harness for strategy autoresearch.
 DO NOT MODIFY THIS FILE. The autoresearch loop is not permitted to edit it.
 
 Usage:
-    python scripts/eval_harness.py --symbol BTCUSDT --days 90
-    python scripts/eval_harness.py --symbol BTCUSDT --days 90 --output-json loops/latest_eval.json
+    python scripts/eval_harness.py --days 90
+    python scripts/eval_harness.py --days 90 --output-json loops/latest_eval.json
+    python scripts/eval_harness.py --symbols BTCUSDT,ETHUSDT --days 90
+
+Tests strategy across multiple coins by default (BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT).
+
+EVAL_SCORE = mean(per-coin scores) * coverage_factor
+  per-coin  = sharpe * (1 - drawdown/100) * min(n_trades/10, 1.0)
+  coverage  = fraction of coins that produced at least 1 trade
+              (penalises strategies that only work on one coin)
 
 Prints exactly one line to stdout: EVAL_SCORE: <float>
 """
@@ -22,18 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 FIXED_SEED = 42
 STARTING_BALANCE = 1000.0  # Fixed — independent of paper_state.json
-
-
-def _ema_series(prices, period):
-    if len(prices) < period:
-        return None
-    mult = 2 / (period + 1)
-    ema = np.empty(len(prices))
-    ema[:period] = np.nan
-    ema[period - 1] = np.mean(prices[:period])
-    for i in range(period, len(prices)):
-        ema[i] = prices[i] * mult + ema[i - 1] * (1 - mult)
-    return ema
+DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
 
 
 def _rsi(prices, period=14):
@@ -62,7 +59,7 @@ def load_strategy():
 
 
 def run_backtest(symbol: str, days: int, strat: dict) -> dict:
-    """Run RSI mean-reversion backtest. Returns metrics dict."""
+    """Run RSI mean-reversion backtest for one symbol. Returns metrics dict."""
     np.random.seed(FIXED_SEED)
 
     from src.core.market_data import get_klines
@@ -75,7 +72,7 @@ def run_backtest(symbol: str, days: int, strat: dict) -> dict:
 
     klines = get_klines(symbol, "1d", min(days, 365))
     if not klines or len(klines) < rsi_period + 5:
-        raise ValueError(f"Not enough data: got {len(klines) if klines else 0} candles")
+        raise ValueError(f"Not enough data for {symbol}: got {len(klines) if klines else 0} candles")
 
     closes = np.array([float(k[4]) for k in klines])
 
@@ -133,10 +130,10 @@ def run_backtest(symbol: str, days: int, strat: dict) -> dict:
     if len(daily_returns) > 1 and np.std(daily_returns) > 0:
         sharpe = float((np.mean(daily_returns) / np.std(daily_returns)) * np.sqrt(252))
 
-    # EVAL_SCORE: rewards Sharpe, penalises drawdown, discounts <10 trades
+    # Per-coin EVAL_SCORE
     trade_factor = min(n_trades / 10.0, 1.0)
     drawdown_penalty = 1 - (max_drawdown_pct / 100)
-    eval_score = sharpe * drawdown_penalty * trade_factor
+    coin_score = sharpe * drawdown_penalty * trade_factor
 
     return {
         "symbol": symbol,
@@ -146,7 +143,7 @@ def run_backtest(symbol: str, days: int, strat: dict) -> dict:
         "max_drawdown_pct": round(max_drawdown_pct, 4),
         "n_trades": n_trades,
         "win_rate": round(win_rate, 4),
-        "eval_score": round(eval_score, 4),
+        "coin_score": round(coin_score, 4),
         "rsi_period": rsi_period,
         "rsi_oversold": rsi_oversold,
         "rsi_overbought": rsi_overbought,
@@ -154,26 +151,78 @@ def run_backtest(symbol: str, days: int, strat: dict) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Eval harness for strategy autoresearch")
-    parser.add_argument("--symbol", default="BTCUSDT")
+    parser = argparse.ArgumentParser(description="Multi-coin eval harness for strategy autoresearch")
+    parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS),
+                        help="Comma-separated list of symbols (default: BTC,ETH,SOL,BNB)")
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--output-json", default=None)
     args = parser.parse_args()
 
+    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+
     try:
         strat = load_strategy()
-        metrics = run_backtest(args.symbol, args.days, strat)
+        results = []
+        errors = []
+
+        for symbol in symbols:
+            try:
+                metrics = run_backtest(symbol, args.days, strat)
+                results.append(metrics)
+                print(f"  {symbol}: score={metrics['coin_score']} sharpe={metrics['sharpe']} "
+                      f"dd={metrics['max_drawdown_pct']}% trades={metrics['n_trades']} "
+                      f"pnl={metrics['total_pnl_pct']:+.2f}%", file=sys.stderr)
+            except Exception as e:
+                errors.append(symbol)
+                print(f"  {symbol}: ERROR — {e}", file=sys.stderr)
+
+        if not results:
+            print("EVAL_SCORE: ERROR")
+            print("All symbols failed", file=sys.stderr)
+            sys.exit(1)
+
+        # Aggregate score
+        # coverage_factor penalises strategies that only work on some coins
+        coins_with_trades = sum(1 for r in results if r["n_trades"] > 0)
+        coverage_factor = coins_with_trades / len(symbols)  # 0.25 if only BTC trades
+        mean_score = float(np.mean([r["coin_score"] for r in results]))
+        eval_score = round(mean_score * coverage_factor, 4)
+
+        # Summary metrics
+        total_trades = sum(r["n_trades"] for r in results)
+        avg_sharpe = round(float(np.mean([r["sharpe"] for r in results])), 4)
+        avg_drawdown = round(float(np.mean([r["max_drawdown_pct"] for r in results])), 4)
+        avg_pnl = round(float(np.mean([r["total_pnl_pct"] for r in results])), 4)
+
+        output = {
+            "symbols": symbols,
+            "days": args.days,
+            "per_coin": results,
+            "aggregate": {
+                "eval_score": eval_score,
+                "mean_coin_score": round(mean_score, 4),
+                "coverage_factor": round(coverage_factor, 4),
+                "coins_with_trades": coins_with_trades,
+                "total_trades": total_trades,
+                "avg_sharpe": avg_sharpe,
+                "avg_drawdown_pct": avg_drawdown,
+                "avg_pnl_pct": avg_pnl,
+            },
+            "errors": errors,
+        }
 
         if args.output_json:
             os.makedirs(os.path.dirname(args.output_json) if os.path.dirname(args.output_json) else ".", exist_ok=True)
             with open(args.output_json, "w") as f:
-                json.dump(metrics, f, indent=2)
+                json.dump(output, f, indent=2)
 
-        print(f"EVAL_SCORE: {metrics['eval_score']}")
-        print(f"  sharpe={metrics['sharpe']} drawdown={metrics['max_drawdown_pct']}% trades={metrics['n_trades']} win_rate={metrics['win_rate']:.0%} pnl={metrics['total_pnl_pct']:+.2f}%", file=sys.stderr)
+        print(f"EVAL_SCORE: {eval_score}")
+        print(f"  coverage={coverage_factor:.0%} ({coins_with_trades}/{len(symbols)} coins) "
+              f"avg_sharpe={avg_sharpe} avg_dd={avg_drawdown}% total_trades={total_trades}",
+              file=sys.stderr)
 
     except Exception as e:
-        print(f"EVAL_SCORE: ERROR")
+        print("EVAL_SCORE: ERROR")
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 

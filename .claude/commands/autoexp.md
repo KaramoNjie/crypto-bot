@@ -15,9 +15,11 @@ via backtests and keeps only improvements.
 
 3. Establish baseline:
    ```bash
-   python scripts/eval_harness.py --symbol BTCUSDT --days 90 --output-json loops/latest_eval.json
+   python scripts/eval_harness.py --days 90 --output-json loops/latest_eval.json
    ```
-   Parse and display the baseline EVAL_SCORE and metrics.
+   Tests BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT.
+   EVAL_SCORE = mean(per-coin scores) * coverage_factor.
+   Parse and display the baseline EVAL_SCORE and per-coin breakdown.
 
 4. Initialise git if needed and create experiment branch:
    ```bash

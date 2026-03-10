@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "binance-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "src.mcp.binance_server"],
+      "cwd": "/home/amo/Documents/crypto-bot"
+    },
+    "trading-db-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "src.mcp.db_server"],
+      "cwd": "/home/amo/Documents/crypto-bot"
+    }
+  }
+}

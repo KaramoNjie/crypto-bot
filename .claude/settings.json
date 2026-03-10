@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /home/amo/Documents/crypto-bot && python -m src.cli *)",
+      "Bash(cd /home/amo/Documents/crypto-bot && python -m src.mcp*)",
+      "Bash(pip install *)",
+      "Bash(pip list *)",
+      "Bash(python -c *)"
+    ]
+  }
+}

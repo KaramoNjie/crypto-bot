@@ -1,0 +1,127 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+.env.local
+.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+*.env
+
+# Logs
+logs/
+*.log
+log/
+
+# Data
+data/*.csv
+data/*.json
+data/*.db
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# Docker
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Testing
+.coverage
+*.cover
+.hypothesis/
+.pytest_cache/
+coverage.xml
+*.coverage
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Node (if using any JS tools)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# ML/Data Science
+*.h5
+*.pkl
+*.pickle
+*.model
+*.weights
+
+# Autoresearch loop (untracked by design)
+loops/results.tsv
+loops/run.log
+loops/latest_eval.json
+.env.test
