@@ -422,12 +422,36 @@ def backtest(
 @app.command()
 def signals(
     timeframe: str = typer.Option("1h", help="Candle timeframe"),
+    discover: bool = typer.Option(False, "--discover", "-d",
+                                  help="Auto-discover top pairs by volume/momentum"),
+    max_pairs: int = typer.Option(8, help="Max pairs when using --discover"),
 ):
-    """Scan all coins and show ensemble trading signals."""
-    from .core.signals import scan_all
+    """Scan coins and show ensemble trading signals. Use --discover for auto pair selection."""
+    from .core.signals import scan_all, discover_top_pairs
+
+    if discover:
+        console.print("[bold]Discovering top pairs by volume & momentum...[/bold]")
+        top = discover_top_pairs(max_pairs=max_pairs)
+        disc_table = Table(title="Top Pairs Discovered")
+        disc_table.add_column("Symbol", style="cyan")
+        disc_table.add_column("Price", justify="right")
+        disc_table.add_column("24h Vol", justify="right")
+        disc_table.add_column("24h Change", justify="right")
+        disc_table.add_column("Momentum", justify="right")
+        for p in top:
+            chg_color = "green" if p["change_pct"] >= 0 else "red"
+            disc_table.add_row(
+                p["symbol"],
+                f"${p['price']:,.4f}",
+                f"${p['volume_24h']:,.0f}",
+                f"[{chg_color}]{p['change_pct']:+.2f}%[/{chg_color}]",
+                f"{p['momentum_score']:.1f}",
+            )
+        console.print(disc_table)
+        console.print()
 
     console.print("[bold]Scanning markets for signals...[/bold]")
-    results = scan_all(timeframe=timeframe)
+    results = scan_all(timeframe=timeframe, auto_discover=discover, max_pairs=max_pairs)
 
     table = Table(title="Multi-Coin Signal Scanner")
     table.add_column("Symbol", style="cyan")
@@ -491,17 +515,21 @@ def auto_trade(
     min_confidence: float = typer.Option(0.5, help="Min confidence to trade (0-1)"),
     iterations: int = typer.Option(0, help="Max iterations (0=infinite)"),
     dry_run: bool = typer.Option(False, help="Show signals without trading"),
+    discover: bool = typer.Option(False, "--discover", "-d",
+                                  help="Auto-discover top pairs each scan"),
 ):
-    """Start autonomous trading loop."""
+    """Start autonomous multi-currency trading loop. Use --discover for dynamic pair selection."""
     from .core.auto_trader import run_loop
 
     if dry_run:
         console.print("[yellow]DRY RUN — signals only, no trades[/yellow]")
+    if discover:
+        console.print("[cyan]AUTO-DISCOVER MODE — scanning all Binance for top pairs[/cyan]")
 
     console.print(f"[bold]Starting auto-trader[/bold] "
                   f"(interval={interval}s, min_conf={min_confidence:.0%})")
     run_loop(interval_seconds=interval, min_confidence=min_confidence,
-             max_iterations=iterations)
+             max_iterations=iterations, auto_discover=discover)
 
 
 @app.command()

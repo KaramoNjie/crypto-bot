@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import datetime
 
-from .signals import generate_signal, scan_all
+from .signals import generate_signal, scan_all, discover_top_pairs
 from .trading import execute_paper_trade
 from .portfolio import get_portfolio_summary
 from .knowledge import log_trade_learning, log_learning
@@ -37,19 +37,26 @@ def _position_size(portfolio_value: float, confidence: float,
 
 
 def check_and_trade(symbols=None, min_confidence: float = 0.5,
-                    dry_run: bool = False) -> list:
+                    dry_run: bool = False,
+                    auto_discover: bool = False) -> list:
     """Scan all symbols and execute trades when signals are strong.
 
     Args:
-        symbols: List of symbols to scan
+        symbols: List of symbols to scan (None = defaults or auto-discover)
         min_confidence: Minimum confidence to execute (0-1)
         dry_run: If True, generate signals but don't execute trades
+        auto_discover: If True, dynamically find top pairs from Binance
 
     Returns:
         List of actions taken (signals + trade results)
     """
     if symbols is None:
-        symbols = DEFAULT_SYMBOLS
+        if auto_discover:
+            discovered = discover_top_pairs(max_pairs=8)
+            symbols = [p["symbol"] for p in discovered]
+            logger.info(f"Auto-discovered pairs: {symbols}")
+        else:
+            symbols = DEFAULT_SYMBOLS
 
     strat = load_strategy()
     risk_pct = strat.get("position_sizing", {}).get("risk_per_trade_pct", 2.0)
@@ -165,18 +172,24 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
 
 
 def run_loop(interval_seconds: int = 300, symbols=None,
-             min_confidence: float = 0.5, max_iterations: int = 0):
+             min_confidence: float = 0.5, max_iterations: int = 0,
+             auto_discover: bool = False):
     """Run continuous trading loop.
 
     Args:
         interval_seconds: Seconds between scans (default 5 min)
-        symbols: Symbols to scan
+        symbols: Symbols to scan (None = use defaults or auto-discover)
         min_confidence: Min confidence to trade
         max_iterations: Stop after N iterations (0 = infinite)
+        auto_discover: If True, re-discover top pairs each scan
     """
+    mode = "AUTO-DISCOVER" if auto_discover else "FIXED"
     print(f"Starting auto-trader loop (interval={interval_seconds}s, "
-          f"min_conf={min_confidence:.0%})")
-    print(f"Symbols: {', '.join(symbols or DEFAULT_SYMBOLS)}")
+          f"min_conf={min_confidence:.0%}, mode={mode})")
+    if not auto_discover:
+        print(f"Symbols: {', '.join(symbols or DEFAULT_SYMBOLS)}")
+    else:
+        print("Pairs: auto-discovering top volume/momentum pairs each scan")
     print("-" * 60)
 
     iteration = 0
@@ -188,7 +201,8 @@ def run_loop(interval_seconds: int = 300, symbols=None,
 
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Scan #{iteration}")
         try:
-            actions = check_and_trade(symbols, min_confidence)
+            actions = check_and_trade(symbols, min_confidence,
+                                      auto_discover=auto_discover)
             for a in actions:
                 status = ""
                 if a.get("executed"):

@@ -45,11 +45,32 @@ def api_portfolio():
 
 @app.route("/api/signals")
 def api_signals():
-    """Return current signals for all coins."""
+    """Return current signals for default coins."""
     try:
         from src.core.signals import scan_all
         results = scan_all()
         return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/signals/discover")
+def api_signals_discover():
+    """Auto-discover top pairs and return signals."""
+    try:
+        from src.core.signals import scan_all
+        results = scan_all(auto_discover=True, max_pairs=8)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/discover")
+def api_discover():
+    """Return top discovered pairs by volume/momentum."""
+    try:
+        from src.core.signals import discover_top_pairs
+        return jsonify(discover_top_pairs(max_pairs=10))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -359,13 +359,82 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
     }
 
 
-def scan_all(symbols=None, timeframe="1h") -> list:
+def discover_top_pairs(min_volume_usd: float = 5_000_000, max_pairs: int = 10) -> list:
+    """Dynamically discover top trading pairs from Binance by volume and momentum.
+
+    Filters:
+      - USDT pairs only (stablecoins excluded)
+      - Minimum 24h volume
+      - Ranked by a composite of volume + absolute price change (momentum)
+
+    Returns list of dicts: [{symbol, price, volume_24h, change_pct, momentum_score}]
+    """
+    EXCLUDE = {"USDCUSDT", "FDUSDUSDT", "EURUSDT", "TUSDUSDT", "BUSDUSDT",
+               "DAIUSDT", "WBTCUSDT"}  # stablecoins & wrapped
+
+    try:
+        from .config import get_binance_client
+        client = get_binance_client()
+        tickers = client.exchange.fetch_tickers()
+    except Exception as e:
+        logger.error(f"Failed to fetch tickers for pair discovery: {e}")
+        # Fallback to defaults
+        return [{"symbol": s, "price": 0, "volume_24h": 0, "change_pct": 0,
+                 "momentum_score": 0}
+                for s in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]]
+
+    candidates = []
+    for sym, t in tickers.items():
+        if not sym.endswith("/USDT"):
+            continue
+        symbol = sym.replace("/", "")
+        if symbol in EXCLUDE:
+            continue
+
+        vol = t.get("quoteVolume", 0) or 0
+        if vol < min_volume_usd:
+            continue
+
+        change = abs(t.get("percentage", 0) or 0)
+        price = t.get("last", 0) or 0
+
+        # Momentum score: log(volume) * abs(change_pct)
+        # Rewards high-volume coins with big moves
+        import math
+        momentum = math.log10(max(vol, 1)) * (1 + change / 10)
+
+        candidates.append({
+            "symbol": symbol,
+            "price": round(price, 8),
+            "volume_24h": round(vol),
+            "change_pct": round(t.get("percentage", 0) or 0, 2),
+            "momentum_score": round(momentum, 2),
+        })
+
+    # Sort by momentum score
+    candidates.sort(key=lambda x: x["momentum_score"], reverse=True)
+    return candidates[:max_pairs]
+
+
+def scan_all(symbols=None, timeframe="1h", auto_discover=False,
+             max_pairs: int = 8) -> list:
     """Scan multiple symbols and rank by signal strength.
+
+    Args:
+        symbols: Explicit list of symbols (overrides auto_discover)
+        timeframe: Candle timeframe
+        auto_discover: If True, dynamically find top pairs from Binance
+        max_pairs: Max pairs to scan when auto_discover=True
 
     Returns list of signal dicts sorted by absolute ensemble_score descending.
     """
     if symbols is None:
-        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+        if auto_discover:
+            discovered = discover_top_pairs(max_pairs=max_pairs)
+            symbols = [p["symbol"] for p in discovered]
+            logger.info(f"Auto-discovered {len(symbols)} pairs: {symbols}")
+        else:
+            symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
 
     results = []
     for symbol in symbols:
