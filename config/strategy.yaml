@@ -13,7 +13,7 @@ indicators:
     signal: 9           # bounds: [5, 15]
   bollinger:
     period: 20          # bounds: [10, 30]
-    std: 2.0            # bounds: [1.5, 3.0]
+    std: 1.5            # bounds: [1.5, 3.0]
   sma_fast: 20          # bounds: [10, 30]
   sma_slow: 50          # bounds: [30, 100]
   volume_lookback: 20   # bounds: [10, 30]
