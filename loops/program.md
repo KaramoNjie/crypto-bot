@@ -6,9 +6,11 @@ You are an autonomous trading strategy researcher running inside Claude Code.
 Your job is to improve the EVAL_SCORE of this paper-trading crypto bot by modifying
 `config/strategy.yaml` one experiment at a time.
 
-EVAL_SCORE = sharpe * (1 - max_drawdown_pct/100) * min(n_trades/10, 1.0)
-Higher is better. This rewards Sharpe ratio, penalises drawdown, and discounts
-strategies with fewer than 10 trades (avoids curve-fitting on tiny samples).
+EVAL_SCORE = mean(per-coin scores) * coverage_factor * feedback_factor
+  per-coin = sharpe * (1 - drawdown/100) * min(n_trades/10, 1.0)
+  coverage = fraction of coins with ≥1 trade (penalises BTC-only strategies)
+  feedback = 1 + (live_win_rate - 0.5) * 0.2  (±10%, needs ≥3 live trades)
+Higher is better. Rewards Sharpe, penalises drawdown, discounts low trade counts.
 
 ## Setup (first iteration only)
 1. Create branch: `git checkout -b strategy-autoexp/$(date +%b%d)` (init git first if needed: `git init && git add -A && git commit -m "baseline"`)
@@ -18,13 +20,15 @@ strategies with fewer than 10 trades (avoids curve-fitting on tiny samples).
 
 ## Eval command (always the same)
 ```bash
-python scripts/eval_harness.py --days 90 --output-json loops/latest_eval.json > loops/run.log 2>&1
+python scripts/eval_harness.py --days 90 --timeframe 1h --output-json loops/latest_eval.json > loops/run.log 2>&1
 grep "^EVAL_SCORE:" loops/run.log
 ```
 
-Tests all 4 coins: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT.
-EVAL_SCORE = mean(per-coin scores) * coverage_factor
-coverage_factor = fraction of coins that produced at least 1 trade
+Tests all 4 coins: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT on 1h candles.
+EVAL_SCORE = mean(per-coin scores) * coverage_factor * feedback_factor
+  per-coin     = sharpe * (1 - drawdown/100) * min(n_trades/10, 1.0)
+  coverage     = fraction of coins that produced ≥1 trade
+  feedback     = 1 + (live_win_rate - 0.5) * 0.2  (±10%, needs ≥3 live trades)
 A strategy that only works on BTC gets 0.25x penalty on the aggregate score.
 
 ## Experiment loop (repeat)
@@ -38,7 +42,7 @@ For each iteration:
    git add config/strategy.yaml
    git commit -m "exp: <what you changed and why>"
    ```
-4. **Eval** — run eval command above.
+4. **Eval** — run eval command above (always with `--timeframe 1h`).
 5. **Parse** — `grep "^EVAL_SCORE:" loops/run.log`
    - If empty → run crashed. Check `tail -20 loops/run.log`. Max 2 fix attempts, then revert.
 6. **Keep or revert**:

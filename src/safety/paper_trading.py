@@ -439,38 +439,28 @@ class PaperTradingSafetyGuard:
 
     def _simulate_market_price(self, symbol: str) -> float:
         """Get real market price for symbol from Binance API"""
+        _log = logging.getLogger(__name__)
         try:
-            # Import here to avoid circular imports
             from ..apis.binance_client import BinanceClient
             from ..config.settings import Config
 
             config = Config()
             binance_client = BinanceClient(config)
 
-            # Get real market price from Binance
             ticker = binance_client.get_ticker(symbol)
             if ticker and 'last' in ticker:
-                real_price = float(ticker['last'])
-                self.logger.info(f"Retrieved real market price for {symbol}: ${real_price:,.2f}")
-                return real_price
-            else:
-                self.logger.warning(f"Could not get real price for {symbol}, using fallback")
+                return float(ticker['last'])
 
         except Exception as e:
-            self.logger.error(f"Error getting real market price for {symbol}: {e}")
+            _log.debug(f"API price lookup failed for {symbol}: {e}")
 
-        # Fallback prices only if API fails (these should be updated rarely)
-        fallback_prices = {
-            "BTCUSDT": 45000.0,
-            "ETHUSDT": 3200.0,
-            "ADAUSDT": 0.65,
-            "DOTUSDT": 28.5,
-            "LINKUSDT": 15.2,
-        }
+        # Fallback: use stored avg_price from positions if available
+        if symbol in self.paper_positions:
+            avg = self.paper_positions[symbol].get("avg_price", 0)
+            if avg > 0:
+                return avg
 
-        fallback_price = fallback_prices.get(symbol, 100.0)
-        self.logger.warning(f"Using fallback price for {symbol}: ${fallback_price:,.2f}")
-        return fallback_price
+        return 0.0
 
     def _update_paper_portfolio(self, order_result: PaperOrderResult):
         """Update paper portfolio with order result"""
@@ -545,20 +535,16 @@ class PaperTradingSafetyGuard:
 
     def _calculate_portfolio_value(self) -> float:
         """Calculate current paper portfolio value"""
+        total_value = self.paper_balance
 
-        try:
-            total_value = self.paper_balance
+        for symbol, position in self.paper_positions.items():
+            current_price = self._simulate_market_price(symbol)
+            if current_price <= 0:
+                # Use cost basis as last resort
+                current_price = position.get("avg_price", 0)
+            total_value += position["quantity"] * current_price
 
-            # Add position values
-            for symbol, position in self.paper_positions.items():
-                current_price = self._simulate_market_price(symbol)
-                position_value = position["quantity"] * current_price
-                total_value += position_value
-
-            return total_value
-
-        except Exception:
-            return self.paper_balance  # Fallback to cash balance
+        return total_value
 
     def _update_daily_counter(self):
         """Update daily trade counter"""

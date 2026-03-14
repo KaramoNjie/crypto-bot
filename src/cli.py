@@ -9,6 +9,11 @@ Usage:
     python -m src.cli status
     python -m src.cli history
     python -m src.cli backtest BTCUSDT --days 30
+    python -m src.cli signals                  # Multi-coin signal scan
+    python -m src.cli auto-trade               # Autonomous trading loop
+    python -m src.cli dashboard                # Start web dashboard
+    python -m src.cli reset-portfolio          # Reset to fresh $100
+    python -m src.cli learnings                # Show agent knowledge
 """
 
 import json
@@ -412,6 +417,137 @@ def backtest(
         title=f"Backtest Results: {symbol}",
         border_style="blue",
     ))
+
+
+@app.command()
+def signals(
+    timeframe: str = typer.Option("1h", help="Candle timeframe"),
+):
+    """Scan all coins and show ensemble trading signals."""
+    from .core.signals import scan_all
+
+    console.print("[bold]Scanning markets for signals...[/bold]")
+    results = scan_all(timeframe=timeframe)
+
+    table = Table(title="Multi-Coin Signal Scanner")
+    table.add_column("Symbol", style="cyan")
+    table.add_column("Price", justify="right")
+    table.add_column("Action")
+    table.add_column("Score", justify="right")
+    table.add_column("Confidence", justify="right")
+    table.add_column("RSI")
+    table.add_column("MACD")
+    table.add_column("BB")
+    table.add_column("EMA")
+    table.add_column("Vol")
+
+    for sig in results:
+        if sig.get("error"):
+            table.add_row(sig["symbol"], "--", "[yellow]ERROR[/yellow]", "--", "--",
+                          "--", "--", "--", "--", "--")
+            continue
+
+        action_color = {"BUY": "green", "SELL": "red", "HOLD": "dim"}.get(sig["action"], "white")
+        strats = sig.get("strategies", {})
+
+        def _chip(s):
+            v = s.get("score", 0) if s else 0
+            c = "green" if v > 0.1 else "red" if v < -0.1 else "dim"
+            return f"[{c}]{v:+.2f}[/{c}]"
+
+        table.add_row(
+            sig["symbol"],
+            f"${sig['price']:,.2f}",
+            f"[{action_color}]{sig['action']}[/{action_color}]",
+            f"{sig['ensemble_score']:+.3f}",
+            f"{sig['confidence']:.0%}",
+            _chip(strats.get("rsi")),
+            _chip(strats.get("macd")),
+            _chip(strats.get("bollinger")),
+            _chip(strats.get("ema_cross")),
+            _chip(strats.get("volume")),
+        )
+
+    console.print(table)
+
+    # Show top recommendation
+    buys = [s for s in results if s.get("action") == "BUY"]
+    sells = [s for s in results if s.get("action") == "SELL"]
+    if buys:
+        best = buys[0]
+        console.print(f"\n[green bold]Top BUY:[/green bold] {best['symbol']} "
+                      f"(score={best['ensemble_score']:+.3f}, conf={best['confidence']:.0%})")
+    if sells:
+        best = sells[0]
+        console.print(f"[red bold]Top SELL:[/red bold] {best['symbol']} "
+                      f"(score={best['ensemble_score']:+.3f}, conf={best['confidence']:.0%})")
+    if not buys and not sells:
+        console.print("\n[dim]No strong signals — HOLD all positions[/dim]")
+
+
+@app.command("auto-trade")
+def auto_trade(
+    interval: int = typer.Option(300, help="Seconds between scans"),
+    min_confidence: float = typer.Option(0.5, help="Min confidence to trade (0-1)"),
+    iterations: int = typer.Option(0, help="Max iterations (0=infinite)"),
+    dry_run: bool = typer.Option(False, help="Show signals without trading"),
+):
+    """Start autonomous trading loop."""
+    from .core.auto_trader import run_loop
+
+    if dry_run:
+        console.print("[yellow]DRY RUN — signals only, no trades[/yellow]")
+
+    console.print(f"[bold]Starting auto-trader[/bold] "
+                  f"(interval={interval}s, min_conf={min_confidence:.0%})")
+    run_loop(interval_seconds=interval, min_confidence=min_confidence,
+             max_iterations=iterations)
+
+
+@app.command()
+def dashboard():
+    """Start the real-time web dashboard."""
+    from .dashboard.app import main as run_dashboard
+    run_dashboard()
+
+
+@app.command("reset-portfolio")
+def reset_portfolio():
+    """Reset paper portfolio to fresh $100."""
+    from .core.state import reset_state, save_state
+
+    console.print("[yellow]Resetting paper portfolio to $100.00...[/yellow]")
+    guard = reset_state()
+    save_state(guard)
+    console.print("[green]Portfolio reset. Balance: $100.00, 0 positions.[/green]")
+
+
+@app.command()
+def learnings(
+    category: str = typer.Option(None, help="Filter by category"),
+    limit: int = typer.Option(20, help="Number of entries to show"),
+):
+    """Show agent knowledge base entries."""
+    from .core.knowledge import get_learnings, get_summary
+
+    summary = get_summary()
+    console.print(Panel(
+        f"Total entries: {summary['total_entries']}\n"
+        f"By category: {json.dumps(summary.get('by_category', {}), indent=2)}",
+        title="Knowledge Base Summary",
+        border_style="purple",
+    ))
+
+    entries = get_learnings(category=category, limit=limit)
+    if not entries:
+        console.print("[dim]No learnings recorded yet.[/dim]")
+        return
+
+    for e in entries[-limit:]:
+        tags = " ".join(f"[purple]{t}[/purple]" for t in e.get("tags", []))
+        console.print(f"\n[bold]{e.get('title', 'untitled')}[/bold]")
+        console.print(f"  [dim]{e.get('detail', '')}[/dim]")
+        console.print(f"  {tags} [dim]{e.get('source', '')} @ {e.get('timestamp', '')[:16]}[/dim]")
 
 
 if __name__ == "__main__":

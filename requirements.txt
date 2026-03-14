@@ -1,89 +1,37 @@
-# Core Production Dependencies
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
+# Core
+typer[all]>=0.9.0
+rich>=13.6.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
 
-# Async and HTTP
-aiohttp>=3.9.0
-aiofiles>=23.2.0
-asyncio-mqtt>=0.16.0
-
-# Database
-sqlalchemy>=2.0.0
-alembic>=1.13.0
-asyncpg>=0.29.0  # PostgreSQL async driver
-aiosqlite>=0.19.0  # SQLite async driver for testing
-
-# Cryptocurrency APIs
-python-binance>=1.0.19
+# Cryptocurrency
 ccxt>=4.1.0
+requests>=2.31.0
 
 # Data Processing
 pandas>=2.1.0
 numpy>=1.25.0
-ta-lib>=0.4.28  # Technical Analysis Library
 
-# Machine Learning (Optional)
-scikit-learn>=1.3.0
-joblib>=1.3.0
-
-# Monitoring and Logging
+# Logging
 structlog>=23.2.0
-prometheus-client>=0.19.0
-sentry-sdk>=1.38.0
-
-# Security
-cryptography>=41.0.0
-passlib[bcrypt]>=1.7.4
-python-jose[cryptography]>=3.3.0
-python-multipart>=0.0.6
-
-# Configuration
-python-dotenv>=1.0.0
-
-# Development Dependencies
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-xdist>=3.3.0  # Parallel test execution
-httpx>=0.25.0  # For testing async HTTP clients
-
-# Code Quality
-black>=23.0.0
-isort>=5.12.0
-flake8>=6.0.0
-mypy>=1.7.0
-
-# Documentation
-mkdocs>=1.5.0
-mkdocs-material>=9.4.0
-
-# Deployment
-docker>=6.1.0
-gunicorn>=21.2.0
-
-# Testing Utilities
-factory-boy>=3.3.0
-freezegun>=1.2.0  # Time freezing for tests
-responses>=0.24.0  # HTTP mocking
-
-# CLI Tools
-typer[all]>=0.9.0
-rich>=13.6.0
+python-json-logger>=2.0.0
 
 # MCP Server
 mcp>=1.0.0
 
-# WebSocket
-websockets>=12.0
+# Dashboard
+flask>=3.0.0
 
-# Additional LLM Providers for LangChain
-langchain-anthropic>=0.1.0
-langchain-groq>=0.1.0
-langchain-together>=0.1.0
-langchain-mistralai>=0.1.0
-langchain-cohere>=0.1.0
-langchain-ollama>=0.1.0
-langchain-google-genai>=1.0.0  # Google Gemini models
-langchain-google-vertexai>=1.0.0  # Google Vertex AI models
+# Strategy Config
+pyyaml>=6.0
+
+# Retry Logic
+tenacity>=8.0.0
+
+# Database (for MCP server)
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+
+# Development
+pytest>=7.4.0

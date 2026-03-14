@@ -6,6 +6,7 @@ from datetime import datetime
 from .config import get_binance_client
 from .state import load_state, save_state
 from .market_data import get_ticker
+from .feedback import log_trade_entry, log_trade_exit
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,24 @@ def execute_paper_trade(symbol: str, side: str, amount_usdt: float) -> dict:
 
         # Persist updated state
         save_state(guard)
+
+        # Feedback loop — log entry/exit for strategy learning
+        try:
+            if side == "BUY":
+                log_trade_entry(
+                    order_id=order_dict.get("orderId", ""),
+                    symbol=symbol,
+                    quantity=round(quantity, 8),
+                    price=round(price, 2),
+                )
+            elif side == "SELL":
+                log_trade_exit(
+                    symbol=symbol,
+                    exit_price=round(price, 2),
+                    quantity=round(quantity, 8),
+                )
+        except Exception as fb_err:
+            logger.warning(f"Feedback logging failed (non-fatal): {fb_err}")
 
         return {
             "status": "FILLED",

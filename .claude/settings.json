@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python -m src.cli *)",
+      "Bash(python -m src.core.auto_trader *)",
+      "Bash(python -m src.dashboard.app *)",
       "Bash(python -m src.mcp*)",
       "Bash(python scripts/*)",
       "Bash(python -c *)",

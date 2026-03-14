@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Trading Bot — Dashboard</title>
+<style>
+:root {
+  --bg: #0a0e17;
+  --card: #111827;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --green: #10b981;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --yellow: #f59e0b;
+  --purple: #8b5cf6;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'SF Mono', 'Fira Code', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1e1b4b, #0f172a); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .status { font-size: 12px; color: var(--muted); }
+.header .live { color: var(--green); }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.card h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.metric { font-size: 28px; font-weight: 700; }
+.metric.green { color: var(--green); }
+.metric.red { color: var(--red); }
+.metric.blue { color: var(--blue); }
+.sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.signal-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.signal-row:last-child { border-bottom: none; }
+.signal-symbol { font-weight: 600; font-size: 15px; }
+.signal-price { color: var(--muted); font-size: 13px; }
+.signal-action { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.signal-action.BUY { background: rgba(16, 185, 129, 0.15); color: var(--green); }
+.signal-action.SELL { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+.signal-action.HOLD { background: rgba(148, 163, 184, 0.1); color: var(--muted); }
+.signal-action.ERROR { background: rgba(245, 158, 11, 0.15); color: var(--yellow); }
+.confidence-bar { width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.confidence-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.strategy-detail { font-size: 11px; color: var(--muted); margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; padding: 8px 0; border-bottom: 1px solid var(--border); }
+td { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.pnl-pos { color: var(--green); }
+.pnl-neg { color: var(--red); }
+.knowledge-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.knowledge-item:last-child { border-bottom: none; }
+.knowledge-title { font-size: 13px; font-weight: 600; }
+.knowledge-detail { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.knowledge-meta { font-size: 10px; color: var(--purple); margin-top: 2px; }
+.tag { display: inline-block; background: rgba(139, 92, 246, 0.15); color: var(--purple); padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 4px; }
+.section-title { font-size: 16px; font-weight: 600; padding: 16px 24px 0; color: var(--text); }
+.refresh-note { font-size: 10px; color: var(--muted); text-align: center; padding: 8px; }
+.strat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+.strat-chip { text-align: center; padding: 8px; background: rgba(30, 41, 59, 0.5); border-radius: 8px; }
+.strat-name { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.strat-score { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.loading { color: var(--muted); font-style: italic; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } .strat-grid { grid-template-columns: repeat(3, 1fr); } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Crypto Trading Bot</h1>
+  <div class="status">Paper Trading &bull; <span class="live" id="status-dot">LIVE</span> &bull; <span id="last-update">Loading...</span></div>
+</div>
+
+<!-- Portfolio Overview -->
+<div class="grid">
+  <div class="card">
+    <h2>Portfolio Value</h2>
+    <div class="metric blue" id="total-value">$--</div>
+    <div class="sub" id="initial-value">Initial: $100.00</div>
+  </div>
+  <div class="card">
+    <h2>P&L</h2>
+    <div class="metric" id="pnl">--</div>
+    <div class="sub" id="pnl-pct">--%</div>
+  </div>
+  <div class="card">
+    <h2>Cash / Positions</h2>
+    <div class="metric" id="cash" style="font-size:20px">$--</div>
+    <div class="sub" id="positions-count">0 open positions</div>
+  </div>
+</div>
+
+<!-- Signals -->
+<div class="section-title">Live Signals</div>
+<div class="grid grid-2" style="padding-top:8px">
+  <div class="card" id="signals-card">
+    <h2>Market Scanner</h2>
+    <div id="signals-list" class="loading">Scanning markets...</div>
+  </div>
+  <div class="card" id="signal-detail-card">
+    <h2>Signal Breakdown <span id="detail-symbol" style="color:var(--blue)"></span></h2>
+    <div id="signal-detail" class="loading">Click a symbol to see details</div>
+  </div>
+</div>
+
+<!-- Trades & Knowledge -->
+<div class="section-title">Activity</div>
+<div class="grid grid-2" style="padding-top:8px">
+  <div class="card">
+    <h2>Recent Trades</h2>
+    <div id="trades-table" class="loading">Loading trades...</div>
+  </div>
+  <div class="card">
+    <h2>Agent Knowledge Base</h2>
+    <div id="knowledge-list" class="loading">Loading learnings...</div>
+  </div>
+</div>
+
+<!-- Strategy & Eval -->
+<div class="section-title">Strategy & Performance</div>
+<div class="grid grid-2" style="padding-top:8px">
+  <div class="card">
+    <h2>Current Strategy</h2>
+    <div id="strategy-info" class="loading">Loading strategy...</div>
+  </div>
+  <div class="card">
+    <h2>Latest Eval Results</h2>
+    <div id="eval-info" class="loading">Loading eval...</div>
+  </div>
+</div>
+
+<div class="refresh-note">Auto-refreshes every 30 seconds &bull; Dashboard powered by Claude Code</div>
+
+<script>
+const API = '';
+
+function fmt(n, d=2) { return n != null ? Number(n).toFixed(d) : '--'; }
+function fmtUsd(n) { return n != null ? '$' + Number(n).toFixed(2) : '$--'; }
+function pnlClass(n) { return n >= 0 ? 'pnl-pos' : 'pnl-neg'; }
+function metricClass(n) { return n >= 0 ? 'green' : 'red'; }
+function confColor(c) { return c > 0.6 ? 'var(--green)' : c > 0.3 ? 'var(--yellow)' : 'var(--muted)'; }
+
+async function fetchJson(url) {
+  try { const r = await fetch(url); return await r.json(); }
+  catch(e) { console.error(url, e); return null; }
+}
+
+async function loadPortfolio() {
+  const d = await fetchJson(API + '/api/portfolio');
+  if (!d || d.error) return;
+  document.getElementById('total-value').textContent = fmtUsd(d.total_value);
+  const pnl = d.pnl || 0;
+  document.getElementById('pnl').textContent = (pnl >= 0 ? '+' : '') + fmtUsd(pnl);
+  document.getElementById('pnl').className = 'metric ' + metricClass(pnl);
+  document.getElementById('pnl-pct').textContent = (pnl >= 0 ? '+' : '') + fmt(d.pnl_pct) + '%';
+  document.getElementById('cash').textContent = fmtUsd(d.cash);
+  const npos = d.positions ? (Array.isArray(d.positions) ? d.positions.length : Object.keys(d.positions).length) : 0;
+  document.getElementById('positions-count').textContent = npos + ' open position' + (npos !== 1 ? 's' : '');
+}
+
+async function loadSignals() {
+  const d = await fetchJson(API + '/api/signals');
+  if (!d || d.error) { document.getElementById('signals-list').textContent = 'Error loading signals'; return; }
+  let html = '';
+  (Array.isArray(d) ? d : []).forEach(s => {
+    const conf = s.confidence || 0;
+    html += `<div class="signal-row" onclick="showDetail('${s.symbol}')" style="cursor:pointer">
+      <div>
+        <div class="signal-symbol">${s.symbol}</div>
+        <div class="signal-price">${fmtUsd(s.price)} &bull; Score: ${fmt(s.ensemble_score, 3)}</div>
+      </div>
+      <div style="text-align:right">
+        <span class="signal-action ${s.action}">${s.action}</span>
+        <div style="margin-top:6px">
+          <div class="confidence-bar"><div class="confidence-fill" style="width:${conf*100}%;background:${confColor(conf)}"></div></div>
+          <span style="font-size:11px;color:var(--muted);margin-left:4px">${fmt(conf*100,0)}%</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('signals-list').innerHTML = html || '<span class="loading">No signals</span>';
+}
+
+async function showDetail(symbol) {
+  document.getElementById('detail-symbol').textContent = symbol;
+  document.getElementById('signal-detail').innerHTML = '<span class="loading">Loading...</span>';
+  const d = await fetchJson(API + '/api/signals/' + symbol);
+  if (!d || d.error) { document.getElementById('signal-detail').textContent = 'Error'; return; }
+  const strats = d.strategies || {};
+  let html = `<div style="margin-bottom:12px">
+    <span class="signal-action ${d.action}" style="font-size:16px;padding:6px 16px">${d.action}</span>
+    <span style="margin-left:8px;font-size:14px;color:var(--muted)">Confidence: ${fmt(d.confidence*100,0)}%</span>
+  </div>
+  <div class="strat-grid">`;
+  for (const [name, s] of Object.entries(strats)) {
+    const color = s.score > 0.1 ? 'var(--green)' : s.score < -0.1 ? 'var(--red)' : 'var(--muted)';
+    html += `<div class="strat-chip">
+      <div class="strat-name">${name}</div>
+      <div class="strat-score" style="color:${color}">${fmt(s.score, 2)}</div>
+      <div style="font-size:9px;color:var(--muted)">${fmt(s.confidence*100,0)}% conf</div>
+    </div>`;
+  }
+  html += '</div>';
+  for (const [name, s] of Object.entries(strats)) {
+    html += `<div class="strategy-detail"><strong>${name}:</strong> ${s.reason || ''}</div>`;
+  }
+  if (d.fear_greed && d.fear_greed.value != null) {
+    html += `<div class="strategy-detail" style="margin-top:8px"><strong>Fear & Greed:</strong> ${d.fear_greed.value} (${d.fear_greed.label})</div>`;
+  }
+  document.getElementById('signal-detail').innerHTML = html;
+}
+
+async function loadTrades() {
+  const d = await fetchJson(API + '/api/trades');
+  if (!d || d.error || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('trades-table').innerHTML = '<span class="loading">No trades yet</span>';
+    return;
+  }
+  let html = '<table><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Amount</th></tr>';
+  d.slice(-20).reverse().forEach(t => {
+    const time = t.timestamp ? new Date(t.timestamp).toLocaleString() : '--';
+    const sideClass = t.side === 'BUY' ? 'pnl-pos' : 'pnl-neg';
+    html += `<tr>
+      <td style="font-size:11px">${time}</td>
+      <td>${t.symbol}</td>
+      <td class="${sideClass}">${t.side}</td>
+      <td>${fmt(t.quantity, 6)}</td>
+      <td>${fmtUsd(t.price)}</td>
+      <td>${fmtUsd(t.amount_usdt)}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  document.getElementById('trades-table').innerHTML = html;
+}
+
+async function loadKnowledge() {
+  const d = await fetchJson(API + '/api/knowledge');
+  if (!d || d.error || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('knowledge-list').innerHTML = '<span class="loading">No learnings recorded yet</span>';
+    return;
+  }
+  let html = '';
+  d.slice(-15).reverse().forEach(k => {
+    const tags = (k.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+    const time = k.timestamp ? new Date(k.timestamp).toLocaleString() : '';
+    html += `<div class="knowledge-item">
+      <div class="knowledge-title">${k.title || ''}</div>
+      <div class="knowledge-detail">${k.detail || ''}</div>
+      <div class="knowledge-meta">${tags} &bull; ${k.source || ''} &bull; ${time}</div>
+    </div>`;
+  });
+  document.getElementById('knowledge-list').innerHTML = html;
+}
+
+async function loadStrategy() {
+  const d = await fetchJson(API + '/api/strategy');
+  if (!d || d.error) { document.getElementById('strategy-info').textContent = 'Error'; return; }
+  const ind = d.indicators || {};
+  const rsi = ind.rsi || {};
+  const macd = ind.macd || {};
+  const bb = ind.bollinger || {};
+  const ps = d.position_sizing || {};
+  let html = `<table>
+    <tr><td>Timeframe</td><td><strong>${d.timeframe || '1h'}</strong></td></tr>
+    <tr><td>RSI</td><td>Period=${rsi.period||14}, Oversold=${rsi.oversold||30}, Overbought=${rsi.overbought||70}</td></tr>
+    <tr><td>MACD</td><td>${macd.fast||12}/${macd.slow||26}/${macd.signal||9}</td></tr>
+    <tr><td>Bollinger</td><td>Period=${bb.period||20}, Std=${bb.std||2.0}</td></tr>
+    <tr><td>Risk/Trade</td><td>${ps.risk_per_trade_pct||2}%</td></tr>
+    <tr><td>Stop Loss</td><td>${ps.stop_loss_vol_mult||2}x volatility</td></tr>
+    <tr><td>Take Profit</td><td>${ps.take_profit_vol_mult||4}x volatility</td></tr>
+  </table>`;
+  document.getElementById('strategy-info').innerHTML = html;
+}
+
+async function loadEval() {
+  const d = await fetchJson(API + '/api/eval');
+  if (!d || d.error || !d.aggregate) {
+    document.getElementById('eval-info').innerHTML = '<span class="loading">No eval results yet. Run /autoexp first.</span>';
+    return;
+  }
+  const a = d.aggregate;
+  const scoreClass = a.eval_score >= 0 ? 'pnl-pos' : 'pnl-neg';
+  let html = `<table>
+    <tr><td>EVAL_SCORE</td><td class="${scoreClass}"><strong>${fmt(a.eval_score, 4)}</strong></td></tr>
+    <tr><td>Coverage</td><td>${fmt(a.coverage_factor * 100, 0)}% (${a.coins_with_trades}/${d.symbols ? d.symbols.length : 4} coins)</td></tr>
+    <tr><td>Avg Sharpe</td><td>${fmt(a.avg_sharpe, 4)}</td></tr>
+    <tr><td>Total Trades</td><td>${a.total_trades}</td></tr>
+    <tr><td>Avg P&L</td><td class="${pnlClass(a.avg_pnl_pct)}">${fmt(a.avg_pnl_pct, 2)}%</td></tr>
+    <tr><td>Live Trades</td><td>${a.live_closed_trades || 0}</td></tr>
+  </table>`;
+  if (d.per_coin) {
+    html += '<div style="margin-top:12px;font-size:12px;color:var(--muted)"><strong>Per Coin:</strong></div>';
+    d.per_coin.forEach(c => {
+      const cl = c.coin_score >= 0 ? 'pnl-pos' : 'pnl-neg';
+      html += `<div style="font-size:11px;padding:2px 0">${c.symbol}: score=<span class="${cl}">${fmt(c.coin_score,4)}</span> sharpe=${fmt(c.sharpe,2)} trades=${c.n_trades} pnl=${fmt(c.total_pnl_pct,2)}%</div>`;
+    });
+  }
+  document.getElementById('eval-info').innerHTML = html;
+}
+
+async function refresh() {
+  await Promise.all([loadPortfolio(), loadSignals(), loadTrades(), loadKnowledge(), loadStrategy(), loadEval()]);
+  document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
