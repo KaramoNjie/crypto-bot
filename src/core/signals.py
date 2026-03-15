@@ -255,6 +255,94 @@ def volume_signal(volumes: np.ndarray, closes: np.ndarray, lookback=20) -> dict:
             "vol_ratio": round(float(vol_ratio), 4), "reason": reason}
 
 
+def vwap_signal(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
+                volumes: np.ndarray, window: int = 24,
+                deviation_pct: float = 2.5) -> dict:
+    """VWAP reversion signal — buy below VWAP, sell above."""
+    if len(closes) < window + 1:
+        return {"score": 0.0, "confidence": 0.0, "reason": "insufficient data"}
+
+    # Rolling VWAP
+    typical = (highs[-window:] + lows[-window:] + closes[-window:]) / 3.0
+    vols = volumes[-window:]
+    cum_vol = np.sum(vols)
+    if cum_vol > 0:
+        vwap_val = float(np.sum(typical * vols) / cum_vol)
+    else:
+        vwap_val = float(closes[-1])
+
+    price = float(closes[-1])
+    dev_pct = (price - vwap_val) / vwap_val * 100 if vwap_val > 0 else 0
+
+    if dev_pct < -deviation_pct:
+        # Price well below VWAP — buy signal
+        depth = abs(dev_pct) / deviation_pct
+        score = min(depth * 0.5, 1.0)
+        confidence = min(0.5 + depth * 0.2, 0.9)
+        reason = f"Price {dev_pct:+.1f}% below VWAP ({vwap_val:.2f})"
+    elif dev_pct > deviation_pct:
+        # Price well above VWAP — sell signal
+        depth = dev_pct / deviation_pct
+        score = -min(depth * 0.5, 1.0)
+        confidence = min(0.5 + depth * 0.2, 0.9)
+        reason = f"Price {dev_pct:+.1f}% above VWAP ({vwap_val:.2f})"
+    elif abs(dev_pct) < deviation_pct * 0.3:
+        # Near VWAP — neutral
+        score = 0.0
+        confidence = 0.1
+        reason = f"Price at VWAP ({dev_pct:+.1f}%)"
+    else:
+        # Between thresholds
+        score = -dev_pct / deviation_pct * 0.3
+        confidence = 0.25
+        reason = f"Price {dev_pct:+.1f}% from VWAP"
+
+    return {"score": round(float(score), 4), "confidence": round(float(confidence), 4),
+            "vwap": round(vwap_val, 2), "deviation_pct": round(float(dev_pct), 2),
+            "reason": reason}
+
+
+def momentum_breakout_signal(closes: np.ndarray, volumes: np.ndarray,
+                             breakout_period: int = 10,
+                             volume_confirm: float = 1.5,
+                             vol_lookback: int = 20) -> dict:
+    """Momentum breakout — signal on N-period high/low with volume."""
+    if len(closes) < max(breakout_period, vol_lookback) + 2:
+        return {"score": 0.0, "confidence": 0.0, "reason": "insufficient data"}
+
+    price = float(closes[-1])
+    lookback = closes[-breakout_period - 1:-1]
+    period_high = float(np.max(lookback))
+    period_low = float(np.min(lookback))
+
+    avg_vol = float(np.mean(volumes[-vol_lookback - 1:-1]))
+    vol_ratio = float(volumes[-1] / avg_vol) if avg_vol > 0 else 1.0
+    vol_confirmed = vol_ratio >= volume_confirm
+
+    if price > period_high:
+        strength = (price - period_high) / period_high * 100
+        score = min(0.5 + strength * 0.3, 1.0)
+        confidence = 0.5 + (0.3 if vol_confirmed else 0.0)
+        reason = f"Breakout above {breakout_period}-period high ({period_high:.2f})"
+        if vol_confirmed:
+            reason += f" vol={vol_ratio:.1f}x"
+    elif price < period_low:
+        strength = (period_low - price) / period_low * 100
+        score = -min(0.5 + strength * 0.3, 1.0)
+        confidence = 0.5 + (0.3 if vol_confirmed else 0.0)
+        reason = f"Breakdown below {breakout_period}-period low ({period_low:.2f})"
+    else:
+        # Inside range
+        pos = (price - period_low) / (period_high - period_low) if period_high != period_low else 0.5
+        score = (pos - 0.5) * 0.2
+        confidence = 0.15
+        reason = f"Inside range ({pos:.0%} position)"
+
+    return {"score": round(float(score), 4), "confidence": round(float(confidence), 4),
+            "vol_ratio": round(vol_ratio, 2), "vol_confirmed": vol_confirmed,
+            "reason": reason}
+
+
 def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) -> dict:
     """Generate ensemble trading signal for a symbol.
 
@@ -276,8 +364,13 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
                 "symbol": symbol, "timeframe": timeframe}
 
     closes = np.array([float(k[4]) for k in klines])
+    highs = np.array([float(k[2]) for k in klines])
+    lows = np.array([float(k[3]) for k in klines])
     volumes = np.array([float(k[5]) for k in klines])
     price = float(closes[-1])
+
+    vwap_cfg = strat.get("vwap", {})
+    mom_cfg = strat.get("momentum", {})
 
     # Run all strategies
     strategies = {
@@ -295,11 +388,18 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
         "ema_cross": ema_crossover_signal(closes, fast_period=9, slow_period=21),
         "volume": volume_signal(volumes, closes,
                                 lookback=ind.get("volume_lookback", 20)),
+        "vwap": vwap_signal(highs, lows, closes, volumes,
+                            window=vwap_cfg.get("window", 24),
+                            deviation_pct=vwap_cfg.get("deviation_pct", 2.5)),
+        "momentum": momentum_breakout_signal(closes, volumes,
+                                              breakout_period=mom_cfg.get("breakout_period", 10),
+                                              volume_confirm=mom_cfg.get("volume_confirm", 1.5)),
     }
 
     # Ensemble weights (strategy importance)
-    weights = {"rsi": 0.30, "macd": 0.25, "bollinger": 0.20,
-               "ema_cross": 0.15, "volume": 0.10}
+    weights = {"rsi": 0.20, "macd": 0.15, "bollinger": 0.15,
+               "ema_cross": 0.10, "volume": 0.05,
+               "vwap": 0.25, "momentum": 0.10}
 
     # Weighted score
     total_weight = 0
