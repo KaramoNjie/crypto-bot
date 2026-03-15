@@ -3,228 +3,612 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crypto Trading Bot — Dashboard</title>
+<title>Crypto Trading Bot</title>
 <style>
 :root {
   --bg: #0a0e17;
   --card: #111827;
+  --card2: #0f1729;
   --border: #1e293b;
   --text: #e2e8f0;
   --muted: #94a3b8;
+  --dim: #64748b;
   --green: #10b981;
+  --green-bg: rgba(16, 185, 129, 0.12);
   --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.12);
   --blue: #3b82f6;
+  --blue-bg: rgba(59, 130, 246, 0.12);
   --yellow: #f59e0b;
+  --yellow-bg: rgba(245, 158, 11, 0.12);
   --purple: #8b5cf6;
+  --purple-bg: rgba(139, 92, 246, 0.12);
+  --cyan: #06b6d4;
+  --orange: #f97316;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'SF Mono', 'Fira Code', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
-.header { background: linear-gradient(135deg, #1e1b4b, #0f172a); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
-.header h1 { font-size: 18px; font-weight: 600; }
-.header .status { font-size: 12px; color: var(--muted); }
-.header .live { color: var(--green); }
-.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
-.grid-2 { grid-template-columns: 1fr 1fr; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-.card h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-.metric { font-size: 28px; font-weight: 700; }
-.metric.green { color: var(--green); }
-.metric.red { color: var(--red); }
-.metric.blue { color: var(--blue); }
-.sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.signal-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
-.signal-row:last-child { border-bottom: none; }
-.signal-symbol { font-weight: 600; font-size: 15px; }
-.signal-price { color: var(--muted); font-size: 13px; }
-.signal-action { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; }
-.signal-action.BUY { background: rgba(16, 185, 129, 0.15); color: var(--green); }
-.signal-action.SELL { background: rgba(239, 68, 68, 0.15); color: var(--red); }
-.signal-action.HOLD { background: rgba(148, 163, 184, 0.1); color: var(--muted); }
-.signal-action.ERROR { background: rgba(245, 158, 11, 0.15); color: var(--yellow); }
-.confidence-bar { width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
-.confidence-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
-.strategy-detail { font-size: 11px; color: var(--muted); margin-top: 4px; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; padding: 8px 0; border-bottom: 1px solid var(--border); }
-td { padding: 10px 0; border-bottom: 1px solid var(--border); }
-.pnl-pos { color: var(--green); }
-.pnl-neg { color: var(--red); }
-.knowledge-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
-.knowledge-item:last-child { border-bottom: none; }
-.knowledge-title { font-size: 13px; font-weight: 600; }
-.knowledge-detail { font-size: 11px; color: var(--muted); margin-top: 4px; }
-.knowledge-meta { font-size: 10px; color: var(--purple); margin-top: 2px; }
-.tag { display: inline-block; background: rgba(139, 92, 246, 0.15); color: var(--purple); padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 4px; }
-.section-title { font-size: 16px; font-weight: 600; padding: 16px 24px 0; color: var(--text); }
-.refresh-note { font-size: 10px; color: var(--muted); text-align: center; padding: 8px; }
-.strat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
-.strat-chip { text-align: center; padding: 8px; background: rgba(30, 41, 59, 0.5); border-radius: 8px; }
-.strat-name { font-size: 10px; color: var(--muted); text-transform: uppercase; }
-.strat-score { font-size: 16px; font-weight: 700; margin-top: 2px; }
-.loading { color: var(--muted); font-style: italic; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } .strat-grid { grid-template-columns: repeat(3, 1fr); } }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #0c1220 100%);
+  padding: 14px 28px;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.logo span { color: var(--blue); }
+.mode-badge { background: var(--green-bg); color: var(--green); font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--muted); }
+.pulse { width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* System Status Bar */
+.status-bar {
+  background: var(--card2);
+  padding: 8px 28px;
+  display: flex; gap: 20px; align-items: center;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+  overflow-x: auto;
+}
+.status-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-dot.ok { background: var(--green); }
+.status-dot.err { background: var(--red); }
+.status-dot.warn { background: var(--yellow); }
+
+/* Layout */
+.container { padding: 20px 28px; max-width: 1600px; margin: 0 auto; }
+.row { display: grid; gap: 16px; margin-bottom: 16px; }
+.row-4 { grid-template-columns: repeat(4, 1fr); }
+.row-3 { grid-template-columns: repeat(3, 1fr); }
+.row-2 { grid-template-columns: 1fr 1fr; }
+.row-2-1 { grid-template-columns: 2fr 1fr; }
+.row-1-2 { grid-template-columns: 1fr 2fr; }
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: #2d3a4f; }
+.card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+.card-badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+
+/* Metrics */
+.metric-value { font-size: 32px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+.metric-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.metric-change { font-size: 13px; font-weight: 600; }
+.green { color: var(--green); }
+.red { color: var(--red); }
+.blue { color: var(--blue); }
+.yellow { color: var(--yellow); }
+.purple { color: var(--purple); }
+.cyan { color: var(--cyan); }
+
+/* Fear & Greed Gauge */
+.gauge-container { text-align: center; padding: 8px 0; }
+.gauge-track {
+  height: 10px; border-radius: 5px; position: relative;
+  background: linear-gradient(90deg, #ef4444, #f97316, #f59e0b, #84cc16, #10b981);
+  margin: 10px 0 6px;
+}
+.gauge-needle {
+  position: absolute; top: -4px; width: 4px; height: 18px;
+  background: white; border-radius: 2px; transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(255,255,255,0.5);
+  transition: left 0.8s ease;
+}
+.gauge-value { font-size: 36px; font-weight: 800; }
+.gauge-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); }
+
+/* Signal Cards */
+.signal-coin {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.15s;
+}
+.signal-coin:last-child { border-bottom: none; }
+.signal-coin:hover { background: rgba(255,255,255,0.02); margin: 0 -20px; padding: 14px 20px; border-radius: 8px; }
+.signal-coin.active { background: var(--blue-bg); margin: 0 -20px; padding: 14px 20px; border-radius: 8px; }
+.coin-info { display: flex; align-items: center; gap: 12px; }
+.coin-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.coin-icon.BTC { background: #f7931a22; color: #f7931a; }
+.coin-icon.ETH { background: #627eea22; color: #627eea; }
+.coin-icon.SOL { background: #9945ff22; color: #9945ff; }
+.coin-icon.BNB { background: #f3ba2f22; color: #f3ba2f; }
+.coin-icon.DEFAULT { background: var(--blue-bg); color: var(--blue); }
+.coin-name { font-weight: 600; font-size: 15px; }
+.coin-price { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.signal-right { text-align: right; }
+.action-badge {
+  display: inline-block; padding: 4px 14px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+}
+.action-badge.BUY { background: var(--green-bg); color: var(--green); }
+.action-badge.SELL { background: var(--red-bg); color: var(--red); }
+.action-badge.HOLD { background: rgba(100,116,139,0.12); color: var(--dim); }
+.conf-bar { width: 80px; height: 5px; background: var(--border); border-radius: 3px; display: inline-block; margin-top: 8px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+/* Strategy Breakdown */
+.strat-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.5);
+  font-size: 13px;
+}
+.strat-row:last-child { border-bottom: none; }
+.strat-name { width: 110px; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.strat-weight { width: 36px; font-size: 10px; color: var(--dim); text-align: right; }
+.strat-bar-track { flex: 1; height: 18px; background: var(--border); border-radius: 4px; position: relative; overflow: hidden; }
+.strat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; position: absolute; }
+.strat-bar-fill.pos { background: linear-gradient(90deg, rgba(16,185,129,0.3), rgba(16,185,129,0.6)); left: 50%; }
+.strat-bar-fill.neg { background: linear-gradient(270deg, rgba(239,68,68,0.3), rgba(239,68,68,0.6)); right: 50%; }
+.strat-bar-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--dim); }
+.strat-score { width: 50px; text-align: right; font-weight: 600; font-size: 13px; }
+.strat-conf { width: 36px; text-align: right; font-size: 11px; color: var(--dim); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+td { padding: 10px 0; border-bottom: 1px solid rgba(30,41,59,0.5); font-size: 13px; }
+tr:last-child td { border-bottom: none; }
+
+/* Positions Table */
+.pos-symbol { font-weight: 600; }
+.pos-entry { color: var(--muted); font-size: 12px; }
+
+/* Experiment Timeline */
+.exp-list { max-height: 320px; overflow-y: auto; }
+.exp-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.5);
+  font-size: 12px;
+}
+.exp-item:last-child { border-bottom: none; }
+.exp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.exp-dot.kept { background: var(--green); }
+.exp-dot.revert { background: var(--red); }
+.exp-dot.reverted { background: var(--red); }
+.exp-score { font-weight: 700; width: 50px; text-align: right; flex-shrink: 0; }
+.exp-desc { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-hash { font-family: 'SF Mono', monospace; font-size: 10px; color: var(--dim); width: 55px; flex-shrink: 0; }
+
+/* Strategy Config */
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+.config-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(30,41,59,0.3); font-size: 12px; }
+.config-label { color: var(--muted); }
+.config-value { font-weight: 600; font-family: 'SF Mono', monospace; }
+
+/* Eval Score */
+.eval-big {
+  text-align: center; padding: 16px 0;
+  background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08));
+  border-radius: 10px; margin-bottom: 14px;
+}
+.eval-big .metric-value { font-size: 48px; }
+.eval-coins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.eval-coin {
+  text-align: center; padding: 10px 6px;
+  background: rgba(30,41,59,0.4); border-radius: 8px;
+}
+.eval-coin-symbol { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.eval-coin-score { font-size: 18px; font-weight: 700; margin-top: 2px; }
+.eval-coin-detail { font-size: 10px; color: var(--dim); margin-top: 2px; }
+
+/* How It Works Flow */
+.flow-diagram {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; padding: 12px 0; flex-wrap: wrap;
+}
+.flow-step {
+  padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); text-align: center;
+}
+.flow-step.active { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); }
+.flow-arrow { color: var(--dim); font-size: 16px; }
+
+/* Knowledge */
+.know-item { padding: 10px 0; border-bottom: 1px solid rgba(30,41,59,0.5); }
+.know-item:last-child { border-bottom: none; }
+.know-title { font-size: 12px; font-weight: 600; }
+.know-detail { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.know-meta { margin-top: 4px; }
+.tag { display: inline-block; background: var(--purple-bg); color: var(--purple); padding: 1px 6px; border-radius: 3px; font-size: 9px; margin-right: 3px; font-weight: 600; }
+
+/* Section Headers */
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; margin-top: 8px;
+}
+.section-title { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+.section-sub { font-size: 11px; color: var(--dim); }
+
+/* Footer */
+.footer { text-align: center; padding: 16px; font-size: 10px; color: var(--dim); border-top: 1px solid var(--border); margin-top: 16px; }
+
+/* Loading */
+.loading { color: var(--dim); font-size: 13px; }
+.shimmer { background: linear-gradient(90deg, var(--card) 25%, #1a2332 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; height: 20px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Responsive */
+@media (max-width: 1100px) { .row-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) {
+  .row-4, .row-3, .row-2, .row-2-1, .row-1-2 { grid-template-columns: 1fr; }
+  .container { padding: 12px 14px; }
+  .header { padding: 12px 14px; }
+  .eval-coins { grid-template-columns: repeat(2, 1fr); }
+  .config-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
+
+<!-- Header -->
 <div class="header">
-  <h1>Crypto Trading Bot</h1>
-  <div class="status">Paper Trading &bull; <span class="live" id="status-dot">LIVE</span> &bull; <span id="last-update">Loading...</span></div>
-</div>
-
-<!-- Portfolio Overview -->
-<div class="grid">
-  <div class="card">
-    <h2>Portfolio Value</h2>
-    <div class="metric blue" id="total-value">$--</div>
-    <div class="sub" id="initial-value">Initial: $100.00</div>
+  <div class="header-left">
+    <div class="logo">Crypto <span>Trading Bot</span></div>
+    <span class="mode-badge">Paper Trading</span>
   </div>
-  <div class="card">
-    <h2>P&L</h2>
-    <div class="metric" id="pnl">--</div>
-    <div class="sub" id="pnl-pct">--%</div>
-  </div>
-  <div class="card">
-    <h2>Cash / Positions</h2>
-    <div class="metric" id="cash" style="font-size:20px">$--</div>
-    <div class="sub" id="positions-count">0 open positions</div>
+  <div class="header-right">
+    <span><span class="pulse"></span> Live</span>
+    <span id="btc-header-price">BTC $--</span>
+    <span id="last-update">--</span>
   </div>
 </div>
 
-<!-- Signals -->
-<div class="section-title">Live Signals</div>
-<div class="grid grid-2" style="padding-top:8px">
-  <div class="card" id="signals-card">
-    <h2>Market Scanner</h2>
-    <div id="signals-list" class="loading">Scanning markets...</div>
+<!-- System Status Bar -->
+<div class="status-bar" id="status-bar">
+  <div class="status-item"><span class="status-dot" id="dot-binance"></span> Binance API</div>
+  <div class="status-item"><span class="status-dot" id="dot-fg"></span> Fear & Greed</div>
+  <div class="status-item"><span class="status-dot" id="dot-paper"></span> Paper State</div>
+  <div class="status-item" style="margin-left:auto; color:var(--dim);" id="strategy-mode-bar">Strategy: --</div>
+</div>
+
+<div class="container">
+
+<!-- Row 1: Portfolio Overview -->
+<div class="row row-4">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Portfolio Value</span></div>
+    <div class="metric-value blue" id="total-value">$--</div>
+    <div class="metric-sub">Starting: $100.00</div>
   </div>
-  <div class="card" id="signal-detail-card">
-    <h2>Signal Breakdown <span id="detail-symbol" style="color:var(--blue)"></span></h2>
-    <div id="signal-detail" class="loading">Click a symbol to see details</div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Profit / Loss</span></div>
+    <div class="metric-value" id="pnl">--</div>
+    <div class="metric-sub" id="pnl-pct">--%</div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Cash Available</span></div>
+    <div class="metric-value" id="cash" style="font-size:28px;">$--</div>
+    <div class="metric-sub" id="positions-count">0 positions</div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Fear & Greed Index</span></div>
+    <div class="gauge-container">
+      <div class="gauge-value" id="fg-value">--</div>
+      <div class="gauge-track"><div class="gauge-needle" id="fg-needle" style="left:50%"></div></div>
+      <div class="gauge-labels"><span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span></div>
+      <div class="metric-sub" id="fg-label" style="margin-top:6px;">--</div>
+    </div>
   </div>
 </div>
 
-<!-- Trades & Knowledge -->
-<div class="section-title">Activity</div>
-<div class="grid grid-2" style="padding-top:8px">
-  <div class="card">
-    <h2>Recent Trades</h2>
-    <div id="trades-table" class="loading">Loading trades...</div>
-  </div>
-  <div class="card">
-    <h2>Agent Knowledge Base</h2>
-    <div id="knowledge-list" class="loading">Loading learnings...</div>
-  </div>
-</div>
-
-<!-- Strategy & Eval -->
-<div class="section-title">Strategy & Performance</div>
-<div class="grid grid-2" style="padding-top:8px">
-  <div class="card">
-    <h2>Current Strategy</h2>
-    <div id="strategy-info" class="loading">Loading strategy...</div>
-  </div>
-  <div class="card">
-    <h2>Latest Eval Results</h2>
-    <div id="eval-info" class="loading">Loading eval...</div>
+<!-- How the System Works -->
+<div class="card" style="margin-bottom:16px; padding:14px 20px;">
+  <div class="flow-diagram">
+    <div class="flow-step" id="flow-data">Market Data</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-7strat">7 Strategies Analyse</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-vote">Weighted Vote</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-signal">BUY / SELL / HOLD</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-safety">Safety Check</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-exec">Paper Trade</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step" id="flow-learn">Learn & Improve</div>
   </div>
 </div>
 
-<div class="refresh-note">Auto-refreshes every 30 seconds &bull; Dashboard powered by Claude Code</div>
+<!-- Row 2: Signals + Strategy Breakdown -->
+<div class="section-header">
+  <span class="section-title">Live Market Signals</span>
+  <span class="section-sub">7-strategy ensemble voting on each coin</span>
+</div>
+<div class="row row-2">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Market Scanner</span>
+      <span class="card-badge" style="background:var(--blue-bg);color:var(--blue);" id="signal-count">4 Coins</span>
+    </div>
+    <div id="signals-list"><div class="shimmer" style="margin:8px 0;height:60px;"></div><div class="shimmer" style="margin:8px 0;height:60px;"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Strategy Breakdown</span>
+      <span id="detail-symbol" style="color:var(--blue);font-size:12px;font-weight:600;"></span>
+    </div>
+    <div id="signal-detail" class="loading" style="font-size:12px;text-align:center;padding:40px 0;">Click a coin to see how each strategy voted</div>
+  </div>
+</div>
+
+<!-- Row 3: Positions + Trades -->
+<div class="section-header">
+  <span class="section-title">Trading Activity</span>
+  <span class="section-sub">Paper trades and open positions</span>
+</div>
+<div class="row row-2">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Open Positions</span>
+      <span class="card-badge" style="background:var(--green-bg);color:var(--green);" id="pos-badge">0</span>
+    </div>
+    <div id="positions-table"><span class="loading">No open positions</span></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Trades</span>
+    </div>
+    <div id="trades-table" style="max-height:280px;overflow-y:auto;"><span class="loading">No trades yet</span></div>
+  </div>
+</div>
+
+<!-- Row 4: Eval + Experiments + Strategy Config -->
+<div class="section-header">
+  <span class="section-title">Self-Improvement Engine</span>
+  <span class="section-sub">Autonomous strategy research &mdash; tests hypotheses, keeps what works</span>
+</div>
+<div class="row row-3">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Eval Score</span>
+      <span class="card-badge" style="background:var(--purple-bg);color:var(--purple);" id="eval-strategy-badge">--</span>
+    </div>
+    <div id="eval-info"><div class="eval-big"><div class="metric-value purple">--</div><div class="metric-sub">Run /autoexp to generate</div></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Experiment History</span>
+      <span class="card-badge" style="background:var(--yellow-bg);color:var(--yellow);" id="exp-count">0</span>
+    </div>
+    <div class="exp-list" id="exp-list"><span class="loading">No experiments yet</span></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Active Strategy Config</span>
+    </div>
+    <div id="strategy-info"><span class="loading">Loading...</span></div>
+  </div>
+</div>
+
+<!-- Row 5: Knowledge Base -->
+<div class="section-header">
+  <span class="section-title">Agent Knowledge Base</span>
+  <span class="section-sub" id="know-summary">What the system has learned</span>
+</div>
+<div class="row" style="grid-template-columns:1fr;">
+  <div class="card">
+    <div id="knowledge-list" style="max-height:260px;overflow-y:auto;"><span class="loading">Loading learnings...</span></div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<div class="footer">
+  Auto-refreshes every 30 seconds &bull; Powered by Claude Code &bull; Paper Trading Only
+</div>
 
 <script>
 const API = '';
+const STRAT_WEIGHTS = {vwap:25, rsi:20, macd:15, bollinger:15, momentum:10, ema_cross:10, volume:5};
+const STRAT_LABELS = {vwap:'VWAP Reversion', rsi:'RSI Mean Reversion', macd:'MACD Momentum', bollinger:'Bollinger Bands', momentum:'Momentum Breakout', ema_cross:'EMA Crossover', volume:'Volume Spike'};
+const COIN_COLORS = {BTC:'#f7931a', ETH:'#627eea', SOL:'#9945ff', BNB:'#f3ba2f'};
 
-function fmt(n, d=2) { return n != null ? Number(n).toFixed(d) : '--'; }
-function fmtUsd(n) { return n != null ? '$' + Number(n).toFixed(2) : '$--'; }
-function pnlClass(n) { return n >= 0 ? 'pnl-pos' : 'pnl-neg'; }
-function metricClass(n) { return n >= 0 ? 'green' : 'red'; }
-function confColor(c) { return c > 0.6 ? 'var(--green)' : c > 0.3 ? 'var(--yellow)' : 'var(--muted)'; }
-
-async function fetchJson(url) {
-  try { const r = await fetch(url); return await r.json(); }
-  catch(e) { console.error(url, e); return null; }
+function fmt(n, d=2) { return n != null && !isNaN(n) ? Number(n).toFixed(d) : '--'; }
+function fmtUsd(n) { return n != null && !isNaN(n) ? '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '$--'; }
+function pnlSign(n) { return n >= 0 ? '+' : ''; }
+function cls(n) { return n >= 0 ? 'green' : 'red'; }
+function confColor(c) { return c > 0.6 ? 'var(--green)' : c > 0.35 ? 'var(--yellow)' : 'var(--dim)'; }
+function coinIcon(sym) {
+  const base = sym.replace('USDT','');
+  const colorClass = ['BTC','ETH','SOL','BNB'].includes(base) ? base : 'DEFAULT';
+  return `<div class="coin-icon ${colorClass}">${base.slice(0,3)}</div>`;
 }
 
+async function fetchJson(url) {
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; }
+  catch(e) { return null; }
+}
+
+let selectedSymbol = null;
+
+// ── Status Bar ──
+async function loadStatus() {
+  const d = await fetchJson(API + '/api/status');
+  if (!d) return;
+  const c = d.components || {};
+  document.getElementById('dot-binance').className = 'status-dot ' + (c.binance === 'ok' ? 'ok' : 'err');
+  document.getElementById('dot-fg').className = 'status-dot ' + (c.fear_greed === 'ok' ? 'ok' : 'err');
+  document.getElementById('dot-paper').className = 'status-dot ' + (c.paper_state === 'ok' ? 'ok' : 'warn');
+  if (d.btc_price) document.getElementById('btc-header-price').textContent = 'BTC ' + fmtUsd(d.btc_price);
+  if (d.fear_greed != null) {
+    const v = Number(d.fear_greed);
+    document.getElementById('fg-value').textContent = v;
+    document.getElementById('fg-needle').style.left = v + '%';
+    document.getElementById('fg-value').className = 'gauge-value ' + (v <= 25 ? 'red' : v <= 45 ? 'orange' : v <= 55 ? 'yellow' : v <= 75 ? 'green' : 'green');
+    const labels = {0:'Extreme Fear',25:'Fear',45:'Neutral',55:'Neutral',75:'Greed',100:'Extreme Greed'};
+    let label = 'Neutral';
+    if (v <= 25) label = 'Extreme Fear'; else if (v <= 45) label = 'Fear'; else if (v <= 55) label = 'Neutral'; else if (v <= 75) label = 'Greed'; else label = 'Extreme Greed';
+    document.getElementById('fg-label').textContent = label;
+  }
+}
+
+// ── Portfolio ──
 async function loadPortfolio() {
   const d = await fetchJson(API + '/api/portfolio');
   if (!d || d.error) return;
   document.getElementById('total-value').textContent = fmtUsd(d.total_value);
-  const pnl = d.pnl || 0;
-  document.getElementById('pnl').textContent = (pnl >= 0 ? '+' : '') + fmtUsd(pnl);
-  document.getElementById('pnl').className = 'metric ' + metricClass(pnl);
-  document.getElementById('pnl-pct').textContent = (pnl >= 0 ? '+' : '') + fmt(d.pnl_pct) + '%';
-  document.getElementById('cash').textContent = fmtUsd(d.cash);
-  const npos = d.positions ? (Array.isArray(d.positions) ? d.positions.length : Object.keys(d.positions).length) : 0;
-  document.getElementById('positions-count').textContent = npos + ' open position' + (npos !== 1 ? 's' : '');
+  const pnl = d.total_pnl || 0;
+  document.getElementById('pnl').textContent = pnlSign(pnl) + fmtUsd(Math.abs(pnl));
+  document.getElementById('pnl').className = 'metric-value ' + cls(pnl);
+  document.getElementById('pnl-pct').textContent = pnlSign(pnl) + fmt(d.total_pnl_pct || 0) + '%';
+  document.getElementById('cash').textContent = fmtUsd(d.cash_balance);
+  const positions = d.positions || [];
+  const npos = Array.isArray(positions) ? positions.length : Object.keys(positions).length;
+  document.getElementById('positions-count').textContent = npos + ' position' + (npos !== 1 ? 's' : '');
+  document.getElementById('pos-badge').textContent = npos;
+
+  // Positions table
+  if (Array.isArray(positions) && positions.length > 0) {
+    let html = '<table><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Current</th><th>Value</th><th>P&L</th></tr>';
+    positions.forEach(p => {
+      const pnlVal = p.unrealized_pnl || 0;
+      html += `<tr>
+        <td class="pos-symbol">${p.symbol}</td>
+        <td>${fmt(p.quantity, 6)}</td>
+        <td class="pos-entry">${fmtUsd(p.entry_price)}</td>
+        <td>${fmtUsd(p.current_price)}</td>
+        <td>${fmtUsd(p.market_value)}</td>
+        <td class="${cls(pnlVal)}">${pnlSign(pnlVal)}${fmtUsd(Math.abs(pnlVal))} (${pnlSign(p.pnl_pct||0)}${fmt(p.pnl_pct||0)}%)</td>
+      </tr>`;
+    });
+    html += '</table>';
+    document.getElementById('positions-table').innerHTML = html;
+  } else {
+    document.getElementById('positions-table').innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--dim);font-size:12px;">No open positions<br><span style="font-size:10px;">Use /trade BUY to open a position</span></div>';
+  }
 }
 
+// ── Signals ──
 async function loadSignals() {
   const d = await fetchJson(API + '/api/signals');
-  if (!d || d.error) { document.getElementById('signals-list').textContent = 'Error loading signals'; return; }
+  if (!d || !Array.isArray(d)) { document.getElementById('signals-list').innerHTML = '<span class="loading">Error loading signals</span>'; return; }
+  document.getElementById('signal-count').textContent = d.length + ' Coins';
   let html = '';
-  (Array.isArray(d) ? d : []).forEach(s => {
+  d.forEach(s => {
+    if (s.error) return;
     const conf = s.confidence || 0;
-    html += `<div class="signal-row" onclick="showDetail('${s.symbol}')" style="cursor:pointer">
-      <div>
-        <div class="signal-symbol">${s.symbol}</div>
-        <div class="signal-price">${fmtUsd(s.price)} &bull; Score: ${fmt(s.ensemble_score, 3)}</div>
+    const active = selectedSymbol === s.symbol ? ' active' : '';
+    html += `<div class="signal-coin${active}" onclick="showDetail('${s.symbol}')">
+      <div class="coin-info">
+        ${coinIcon(s.symbol)}
+        <div>
+          <div class="coin-name">${s.symbol.replace('USDT','')}/USDT</div>
+          <div class="coin-price">${fmtUsd(s.price)} &bull; Score: <span class="${cls(s.ensemble_score)}">${fmt(s.ensemble_score, 3)}</span></div>
+        </div>
       </div>
-      <div style="text-align:right">
-        <span class="signal-action ${s.action}">${s.action}</span>
-        <div style="margin-top:6px">
-          <div class="confidence-bar"><div class="confidence-fill" style="width:${conf*100}%;background:${confColor(conf)}"></div></div>
-          <span style="font-size:11px;color:var(--muted);margin-left:4px">${fmt(conf*100,0)}%</span>
+      <div class="signal-right">
+        <span class="action-badge ${s.action}">${s.action}</span>
+        <div>
+          <div class="conf-bar"><div class="conf-fill" style="width:${conf*100}%;background:${confColor(conf)}"></div></div>
+          <span style="font-size:10px;color:var(--dim);margin-left:4px;">${fmt(conf*100,0)}%</span>
         </div>
       </div>
     </div>`;
   });
   document.getElementById('signals-list').innerHTML = html || '<span class="loading">No signals</span>';
+  // Auto-select first if none selected
+  if (!selectedSymbol && d.length > 0 && !d[0].error) showDetail(d[0].symbol);
 }
 
 async function showDetail(symbol) {
-  document.getElementById('detail-symbol').textContent = symbol;
-  document.getElementById('signal-detail').innerHTML = '<span class="loading">Loading...</span>';
+  selectedSymbol = symbol;
+  document.getElementById('detail-symbol').textContent = symbol.replace('USDT','') + '/USDT';
+  document.getElementById('signal-detail').innerHTML = '<div class="shimmer" style="height:200px;"></div>';
+  // Highlight active
+  document.querySelectorAll('.signal-coin').forEach(el => {
+    el.classList.toggle('active', el.onclick.toString().includes(symbol));
+  });
+  // Animate flow
+  document.querySelectorAll('.flow-step').forEach(el => el.classList.remove('active'));
+  const steps = ['flow-data','flow-7strat','flow-vote','flow-signal','flow-safety'];
+  for (let i = 0; i < steps.length; i++) {
+    setTimeout(() => document.getElementById(steps[i]).classList.add('active'), i * 200);
+  }
+
   const d = await fetchJson(API + '/api/signals/' + symbol);
-  if (!d || d.error) { document.getElementById('signal-detail').textContent = 'Error'; return; }
+  if (!d || d.error) { document.getElementById('signal-detail').textContent = 'Error loading'; return; }
+
+  // Build strategy breakdown with visual bars
   const strats = d.strategies || {};
-  let html = `<div style="margin-bottom:12px">
-    <span class="signal-action ${d.action}" style="font-size:16px;padding:6px 16px">${d.action}</span>
-    <span style="margin-left:8px;font-size:14px;color:var(--muted)">Confidence: ${fmt(d.confidence*100,0)}%</span>
-  </div>
-  <div class="strat-grid">`;
-  for (const [name, s] of Object.entries(strats)) {
-    const color = s.score > 0.1 ? 'var(--green)' : s.score < -0.1 ? 'var(--red)' : 'var(--muted)';
-    html += `<div class="strat-chip">
-      <div class="strat-name">${name}</div>
-      <div class="strat-score" style="color:${color}">${fmt(s.score, 2)}</div>
-      <div style="font-size:9px;color:var(--muted)">${fmt(s.confidence*100,0)}% conf</div>
+  let html = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <span class="action-badge ${d.action}" style="font-size:14px;padding:6px 18px;">${d.action}</span>
+    <span style="font-size:13px;color:var(--muted);">Confidence: <strong>${fmt((d.confidence||0)*100,0)}%</strong></span>
+    <span style="font-size:13px;color:var(--muted);">Score: <strong class="${cls(d.ensemble_score)}">${fmt(d.ensemble_score,3)}</strong></span>
+  </div>`;
+
+  // Strategy bars
+  const order = ['vwap','rsi','macd','bollinger','momentum','ema_cross','volume'];
+  order.forEach(key => {
+    const s = strats[key];
+    if (!s) return;
+    const score = s.score || 0;
+    const conf = s.confidence || 0;
+    const w = STRAT_WEIGHTS[key] || 0;
+    const pct = Math.min(Math.abs(score) * 50, 50); // max 50% of half
+    const barClass = score >= 0 ? 'pos' : 'neg';
+    const barStyle = score >= 0
+      ? `left:50%;width:${pct}%;`
+      : `right:50%;width:${pct}%;`;
+    html += `<div class="strat-row">
+      <div class="strat-name">${STRAT_LABELS[key] || key}</div>
+      <div class="strat-weight">${w}%</div>
+      <div class="strat-bar-track">
+        <div class="strat-bar-center"></div>
+        <div class="strat-bar-fill ${barClass}" style="${barStyle}"></div>
+      </div>
+      <div class="strat-score ${cls(score)}">${score >= 0 ? '+' : ''}${fmt(score,2)}</div>
+      <div class="strat-conf">${fmt(conf*100,0)}%</div>
     </div>`;
+  });
+
+  // Reasons
+  html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">';
+  order.forEach(key => {
+    const s = strats[key];
+    if (!s || !s.reason) return;
+    html += `<div style="font-size:11px;color:var(--muted);padding:3px 0;"><strong style="color:var(--dim);">${key}:</strong> ${s.reason}</div>`;
+  });
+  if (d.fear_greed && d.fear_greed.value != null) {
+    html += `<div style="font-size:11px;color:var(--muted);padding:3px 0;margin-top:4px;"><strong style="color:var(--dim);">Fear & Greed:</strong> ${d.fear_greed.value} (${d.fear_greed.label})</div>`;
   }
   html += '</div>';
-  for (const [name, s] of Object.entries(strats)) {
-    html += `<div class="strategy-detail"><strong>${name}:</strong> ${s.reason || ''}</div>`;
-  }
-  if (d.fear_greed && d.fear_greed.value != null) {
-    html += `<div class="strategy-detail" style="margin-top:8px"><strong>Fear & Greed:</strong> ${d.fear_greed.value} (${d.fear_greed.label})</div>`;
-  }
+
   document.getElementById('signal-detail').innerHTML = html;
+  setTimeout(() => document.getElementById('flow-exec').classList.add('active'), 1200);
+  setTimeout(() => document.getElementById('flow-learn').classList.add('active'), 1400);
 }
 
+// ── Trades ──
 async function loadTrades() {
   const d = await fetchJson(API + '/api/trades');
-  if (!d || d.error || !Array.isArray(d) || d.length === 0) {
-    document.getElementById('trades-table').innerHTML = '<span class="loading">No trades yet</span>';
+  if (!d || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('trades-table').innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--dim);font-size:12px;">No trades yet<br><span style="font-size:10px;">Use /trade or /auto-trade to start</span></div>';
     return;
   }
-  let html = '<table><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Amount</th></tr>';
-  d.slice(-20).reverse().forEach(t => {
-    const time = t.timestamp ? new Date(t.timestamp).toLocaleString() : '--';
-    const sideClass = t.side === 'BUY' ? 'pnl-pos' : 'pnl-neg';
+  let html = '<table><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Price</th><th>Amount</th></tr>';
+  d.slice(-15).reverse().forEach(t => {
+    const time = t.timestamp ? t.timestamp.slice(5,16).replace('T',' ') : '--';
+    const sideClass = t.side === 'BUY' ? 'green' : 'red';
     html += `<tr>
-      <td style="font-size:11px">${time}</td>
-      <td>${t.symbol}</td>
-      <td class="${sideClass}">${t.side}</td>
-      <td>${fmt(t.quantity, 6)}</td>
+      <td style="font-size:11px;color:var(--dim);">${time}</td>
+      <td style="font-weight:600;">${(t.symbol||'').replace('USDT','')}</td>
+      <td class="${sideClass}" style="font-weight:600;">${t.side}</td>
       <td>${fmtUsd(t.price)}</td>
       <td>${fmtUsd(t.amount_usdt)}</td>
     </tr>`;
@@ -233,74 +617,130 @@ async function loadTrades() {
   document.getElementById('trades-table').innerHTML = html;
 }
 
+// ── Eval ──
+async function loadEval() {
+  const d = await fetchJson(API + '/api/eval');
+  if (!d || !d.aggregate) {
+    document.getElementById('eval-info').innerHTML = '<div class="eval-big"><div class="metric-value purple">--</div><div class="metric-sub">Run /autoexp to generate scores</div></div>';
+    return;
+  }
+  const a = d.aggregate;
+  const score = a.eval_score || 0;
+  let html = `<div class="eval-big">
+    <div class="metric-value ${score > 2 ? 'green' : score > 0 ? 'yellow' : 'red'}">${fmt(score, 2)}</div>
+    <div class="metric-sub">EVAL_SCORE &bull; Coverage: ${fmt((a.coverage_factor||0)*100,0)}% &bull; ${a.total_trades||0} trades</div>
+  </div>`;
+
+  if (d.per_coin) {
+    html += '<div class="eval-coins">';
+    d.per_coin.forEach(c => {
+      const cs = c.coin_score || 0;
+      html += `<div class="eval-coin">
+        <div class="eval-coin-symbol">${(c.symbol||'').replace('USDT','')}</div>
+        <div class="eval-coin-score ${cls(cs)}">${fmt(cs, 2)}</div>
+        <div class="eval-coin-detail">Sharpe ${fmt(c.sharpe,1)} &bull; ${c.n_trades} trades</div>
+        <div class="eval-coin-detail">${fmt(c.total_pnl_pct,1)}% P&L &bull; ${fmt(c.max_drawdown_pct,1)}% DD</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  document.getElementById('eval-info').innerHTML = html;
+  if (d.strategy) document.getElementById('eval-strategy-badge').textContent = d.strategy.toUpperCase();
+}
+
+// ── Experiments ──
+async function loadExperiments() {
+  const d = await fetchJson(API + '/api/experiments');
+  if (!d || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('exp-list').innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--dim);font-size:12px;">No experiments yet<br><span style="font-size:10px;">Run /autoexp to start</span></div>';
+    document.getElementById('exp-count').textContent = '0';
+    return;
+  }
+  document.getElementById('exp-count').textContent = d.length;
+  let html = '';
+  // Show most recent first, limit to 30
+  d.slice(-30).reverse().forEach(e => {
+    const status = (e.status || '').toLowerCase();
+    const dotClass = (status === 'kept' || status === 'keep') ? 'kept' : 'revert';
+    const scoreClass = e.eval_score > 2 ? 'green' : e.eval_score > 0 ? 'yellow' : 'red';
+    html += `<div class="exp-item">
+      <div class="exp-dot ${dotClass}" title="${e.status}"></div>
+      <div class="exp-hash">${e.commit || '--'}</div>
+      <div class="exp-score ${scoreClass}">${fmt(e.eval_score, 2)}</div>
+      <div class="exp-desc" title="${e.description || ''}">${e.description || ''}</div>
+    </div>`;
+  });
+  document.getElementById('exp-list').innerHTML = html;
+}
+
+// ── Strategy Config ──
+async function loadStrategy() {
+  const d = await fetchJson(API + '/api/strategy');
+  if (!d || d.error) { document.getElementById('strategy-info').textContent = 'Error'; return; }
+  const mode = d.strategy_mode || 'rsi';
+  document.getElementById('strategy-mode-bar').innerHTML = 'Strategy: <strong style="color:var(--blue);">' + mode.toUpperCase() + '</strong>';
+
+  const ind = d.indicators || {};
+  const rsi = ind.rsi || {};
+  const vwap = d.vwap || {};
+  const mom = d.momentum || {};
+  const ps = d.position_sizing || {};
+
+  let html = `<div style="margin-bottom:10px;"><span class="action-badge" style="background:var(--blue-bg);color:var(--blue);font-size:13px;padding:5px 14px;">${mode.toUpperCase()}</span> <span style="font-size:11px;color:var(--dim);">active strategy mode</span></div>`;
+  html += '<div class="config-grid">';
+
+  if (mode === 'vwap' || mode === 'vwap_rsi') {
+    html += `
+      <div class="config-item"><span class="config-label">VWAP Deviation</span><span class="config-value">${vwap.deviation_pct || '--'}%</span></div>
+      <div class="config-item"><span class="config-label">VWAP Window</span><span class="config-value">${vwap.window || '--'} candles</span></div>
+      <div class="config-item"><span class="config-label">RSI Oversold</span><span class="config-value">${vwap.rsi_oversold || rsi.oversold || '--'}</span></div>
+      <div class="config-item"><span class="config-label">RSI Overbought</span><span class="config-value">${vwap.rsi_overbought || rsi.overbought || '--'}</span></div>`;
+  }
+
+  html += `
+    <div class="config-item"><span class="config-label">RSI Period</span><span class="config-value">${rsi.period || '--'}</span></div>
+    <div class="config-item"><span class="config-label">Timeframe</span><span class="config-value">${d.timeframe || '1h'}</span></div>
+    <div class="config-item"><span class="config-label">Risk/Trade</span><span class="config-value">${ps.risk_per_trade_pct || 2}%</span></div>
+    <div class="config-item"><span class="config-label">Stop Loss</span><span class="config-value">${ps.stop_loss_vol_mult || 2}x vol</span></div>
+    <div class="config-item"><span class="config-label">Take Profit</span><span class="config-value">${ps.take_profit_vol_mult || 4}x vol</span></div>
+    <div class="config-item"><span class="config-label">Min Confidence</span><span class="config-value">${(d.signal||{}).min_confidence || 0.6}</span></div>`;
+
+  html += '</div>';
+  document.getElementById('strategy-info').innerHTML = html;
+}
+
+// ── Knowledge ──
 async function loadKnowledge() {
+  const summary = await fetchJson(API + '/api/knowledge/summary');
+  if (summary && summary.total_entries) {
+    const cats = summary.by_category || {};
+    const parts = Object.entries(cats).map(([k,v]) => `${v} ${k}`).join(' &bull; ');
+    document.getElementById('know-summary').innerHTML = summary.total_entries + ' learnings: ' + parts;
+  }
   const d = await fetchJson(API + '/api/knowledge');
-  if (!d || d.error || !Array.isArray(d) || d.length === 0) {
-    document.getElementById('knowledge-list').innerHTML = '<span class="loading">No learnings recorded yet</span>';
+  if (!d || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('knowledge-list').innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--dim);font-size:12px;">No learnings recorded yet</div>';
     return;
   }
   let html = '';
-  d.slice(-15).reverse().forEach(k => {
+  d.slice(-12).reverse().forEach(k => {
     const tags = (k.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
-    const time = k.timestamp ? new Date(k.timestamp).toLocaleString() : '';
-    html += `<div class="knowledge-item">
-      <div class="knowledge-title">${k.title || ''}</div>
-      <div class="knowledge-detail">${k.detail || ''}</div>
-      <div class="knowledge-meta">${tags} &bull; ${k.source || ''} &bull; ${time}</div>
+    html += `<div class="know-item">
+      <div class="know-title">${k.title || ''}</div>
+      <div class="know-detail">${k.detail || ''}</div>
+      <div class="know-meta">${tags}</div>
     </div>`;
   });
   document.getElementById('knowledge-list').innerHTML = html;
 }
 
-async function loadStrategy() {
-  const d = await fetchJson(API + '/api/strategy');
-  if (!d || d.error) { document.getElementById('strategy-info').textContent = 'Error'; return; }
-  const ind = d.indicators || {};
-  const rsi = ind.rsi || {};
-  const macd = ind.macd || {};
-  const bb = ind.bollinger || {};
-  const ps = d.position_sizing || {};
-  let html = `<table>
-    <tr><td>Timeframe</td><td><strong>${d.timeframe || '1h'}</strong></td></tr>
-    <tr><td>RSI</td><td>Period=${rsi.period||14}, Oversold=${rsi.oversold||30}, Overbought=${rsi.overbought||70}</td></tr>
-    <tr><td>MACD</td><td>${macd.fast||12}/${macd.slow||26}/${macd.signal||9}</td></tr>
-    <tr><td>Bollinger</td><td>Period=${bb.period||20}, Std=${bb.std||2.0}</td></tr>
-    <tr><td>Risk/Trade</td><td>${ps.risk_per_trade_pct||2}%</td></tr>
-    <tr><td>Stop Loss</td><td>${ps.stop_loss_vol_mult||2}x volatility</td></tr>
-    <tr><td>Take Profit</td><td>${ps.take_profit_vol_mult||4}x volatility</td></tr>
-  </table>`;
-  document.getElementById('strategy-info').innerHTML = html;
-}
-
-async function loadEval() {
-  const d = await fetchJson(API + '/api/eval');
-  if (!d || d.error || !d.aggregate) {
-    document.getElementById('eval-info').innerHTML = '<span class="loading">No eval results yet. Run /autoexp first.</span>';
-    return;
-  }
-  const a = d.aggregate;
-  const scoreClass = a.eval_score >= 0 ? 'pnl-pos' : 'pnl-neg';
-  let html = `<table>
-    <tr><td>EVAL_SCORE</td><td class="${scoreClass}"><strong>${fmt(a.eval_score, 4)}</strong></td></tr>
-    <tr><td>Coverage</td><td>${fmt(a.coverage_factor * 100, 0)}% (${a.coins_with_trades}/${d.symbols ? d.symbols.length : 4} coins)</td></tr>
-    <tr><td>Avg Sharpe</td><td>${fmt(a.avg_sharpe, 4)}</td></tr>
-    <tr><td>Total Trades</td><td>${a.total_trades}</td></tr>
-    <tr><td>Avg P&L</td><td class="${pnlClass(a.avg_pnl_pct)}">${fmt(a.avg_pnl_pct, 2)}%</td></tr>
-    <tr><td>Live Trades</td><td>${a.live_closed_trades || 0}</td></tr>
-  </table>`;
-  if (d.per_coin) {
-    html += '<div style="margin-top:12px;font-size:12px;color:var(--muted)"><strong>Per Coin:</strong></div>';
-    d.per_coin.forEach(c => {
-      const cl = c.coin_score >= 0 ? 'pnl-pos' : 'pnl-neg';
-      html += `<div style="font-size:11px;padding:2px 0">${c.symbol}: score=<span class="${cl}">${fmt(c.coin_score,4)}</span> sharpe=${fmt(c.sharpe,2)} trades=${c.n_trades} pnl=${fmt(c.total_pnl_pct,2)}%</div>`;
-    });
-  }
-  document.getElementById('eval-info').innerHTML = html;
-}
-
+// ── Refresh All ──
 async function refresh() {
-  await Promise.all([loadPortfolio(), loadSignals(), loadTrades(), loadKnowledge(), loadStrategy(), loadEval()]);
-  document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  await Promise.all([
+    loadStatus(), loadPortfolio(), loadSignals(), loadTrades(),
+    loadStrategy(), loadEval(), loadExperiments(), loadKnowledge()
+  ]);
+  document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
 }
 
 refresh();

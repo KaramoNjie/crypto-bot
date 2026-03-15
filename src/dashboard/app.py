@@ -28,6 +28,17 @@ def _read_json(path: Path, default=None):
         return default if default is not None else {}
 
 
+def _sanitize(obj):
+    """Convert numpy types to native Python for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    if hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
+    return obj
+
+
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -49,7 +60,7 @@ def api_signals():
     try:
         from src.core.signals import scan_all
         results = scan_all()
-        return jsonify(results)
+        return jsonify(_sanitize(results))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -60,7 +71,7 @@ def api_signals_discover():
     try:
         from src.core.signals import scan_all
         results = scan_all(auto_discover=True, max_pairs=8)
-        return jsonify(results)
+        return jsonify(_sanitize(results))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -80,7 +91,7 @@ def api_signal_detail(symbol):
     """Detailed signal for one symbol."""
     try:
         from src.core.signals import generate_signal
-        return jsonify(generate_signal(symbol.upper()))
+        return jsonify(_sanitize(generate_signal(symbol.upper())))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -136,6 +147,28 @@ def api_eval():
     """Return latest eval results."""
     data = _read_json(DATA_DIR.parent / "loops" / "latest_eval.json")
     return jsonify(data)
+
+
+@app.route("/api/experiments")
+def api_experiments():
+    """Return experiment history from results.tsv."""
+    tsv_path = DATA_DIR.parent / "loops" / "results.tsv"
+    if not tsv_path.exists():
+        return jsonify([])
+    try:
+        rows = []
+        for line in tsv_path.read_text().strip().split("\n")[1:]:  # skip header
+            parts = line.split("\t")
+            if len(parts) >= 4:
+                rows.append({
+                    "commit": parts[0],
+                    "eval_score": float(parts[1]) if parts[1] else 0,
+                    "status": parts[2],
+                    "description": parts[3],
+                })
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/status")
