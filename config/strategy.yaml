@@ -29,3 +29,34 @@ position_sizing:
   take_profit_vol_mult: 4.0   # bounds: [1.0, 8.0] — TP = entry + N * daily_vol
 
 timeframe: "1h"         # allowed: ["15m", "30m", "1h", "4h"]
+
+# --- Strategy mode for v2 eval harness ---
+# allowed: ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap"]
+strategy_mode: "vwap"
+
+# Ensemble thresholds (used when strategy_mode = "ensemble")
+# signal:
+#   buy_threshold: 0.15    # bounds: [0.05, 0.4]
+#   sell_threshold: -0.15  # bounds: [-0.4, -0.05]
+
+# Multi-indicator confirmation (strategy_mode = "multi_confirm")
+multi_confirm:
+  require_agree: 2         # bounds: [2, 5] — how many indicators must agree
+
+# Momentum breakout (strategy_mode = "momentum")
+momentum:
+  breakout_period: 10      # bounds: [5, 50] — look back N candles for high/low
+  volume_confirm: 1.5      # bounds: [1.0, 3.0] — require Nx average volume
+  trailing_stop_pct: 2.0   # bounds: [1.0, 10.0] — trailing stop %
+
+# Bollinger squeeze breakout (strategy_mode = "squeeze")
+squeeze:
+  width_threshold: 0.03    # bounds: [0.01, 0.06] — BB width below this = squeeze
+  squeeze_candles: 3       # bounds: [3, 15] — consecutive candles in squeeze
+
+# VWAP reversion (strategy_mode = "vwap")
+vwap:
+  deviation_pct: 2.5       # bounds: [0.5, 5.0] — % deviation from VWAP to trigger
+  window: 24               # bounds: [12, 96] — rolling VWAP window (candles)
+  rsi_oversold: 44         # bounds: [20, 45] — RSI confirmation for buy
+  rsi_overbought: 70       # bounds: [55, 80] — RSI confirmation for sell
