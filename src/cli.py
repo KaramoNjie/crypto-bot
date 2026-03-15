@@ -62,9 +62,12 @@ def analyze(
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
 
-    table.add_row("Price", f"${market.get('price', 'N/A'):,.2f}" if isinstance(market.get('price'), (int, float)) else str(market.get('price', 'N/A')))
-    table.add_row("24h Change", f"{market.get('change_24h_pct', 'N/A')}%")
-    table.add_row("24h Volume", f"${market.get('volume_24h', 0):,.0f}" if isinstance(market.get('volume_24h'), (int, float)) else "N/A")
+    price = market.get('price')
+    table.add_row("Price", f"${price:,.2f}" if isinstance(price, (int, float)) else "N/A")
+    change = market.get('change_24h_pct')
+    table.add_row("24h Change", f"{change}%" if change is not None else "N/A")
+    vol = market.get('volume_24h')
+    table.add_row("24h Volume", f"${float(vol):,.0f}" if isinstance(vol, (int, float)) else "N/A")
     table.add_row("RSI", str(tech.get("rsi", "N/A")))
 
     macd = tech.get("macd", {})
@@ -199,8 +202,12 @@ def portfolio():
     console.print(f"[bold]Loading {mode_label} portfolio...[/bold]")
     data = get_portfolio_summary()
 
+    if "error" in data:
+        console.print(f"[red]Error: {data['error']}[/red]")
+        return
+
     # Summary
-    pnl_color = "green" if data["total_pnl"] >= 0 else "red"
+    pnl_color = "green" if data.get("total_pnl", 0) >= 0 else "red"
     console.print(Panel(
         f"Mode: {mode_label}\n"
         f"Cash: ${data['cash_balance']:,.2f}\n"
@@ -294,7 +301,8 @@ def status():
         client = get_binance_client()
         ticker = client.get_ticker("BTCUSDT")
         results["binance_api"] = "connected" if ticker else "error"
-        results["btc_price"] = f"${float(ticker.get('last', ticker.get('close', 0))):,.2f}"
+        btc_price = ticker.get('last') or ticker.get('close') or 0
+        results["btc_price"] = f"${float(btc_price):,.2f}"
     except Exception as e:
         results["binance_api"] = f"error: {e}"
 
@@ -390,7 +398,7 @@ def backtest(
             entry_price = price
             balance = 0
             trades.append({"type": "BUY", "price": price, "rsi": rsi})
-        elif rsi > 70 and position > 0:
+        elif rsi > 70 and position > 0 and entry_price > 0:
             # Sell
             balance = position * price
             pnl = ((price / entry_price) - 1) * 100
@@ -418,7 +426,7 @@ def backtest(
 
     values = np.array(values)
     peak = np.maximum.accumulate(values)
-    drawdown = ((values - peak) / peak) * 100
+    drawdown = np.where(peak > 0, ((values - peak) / peak) * 100, 0)
     max_dd = float(np.min(drawdown))
 
     wins = sum(1 for t in trades if t.get("pnl_pct", 0) > 0)

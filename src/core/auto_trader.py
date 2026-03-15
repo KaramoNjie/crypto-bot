@@ -34,7 +34,7 @@ def _position_size(portfolio_value: float, confidence: float,
     # Base: risk_pct% of portfolio per trade
     base = portfolio_value * (risk_pct / 100)
     # Scale by confidence (0.4-1.0 range mapped to 0.5-1.0x)
-    scale = 0.5 + confidence * 0.5
+    scale = 0.5 + max(0, confidence - 0.4) / 0.6 * 0.5
     size = base * scale
     # Clamp to $5 min, $100 max (safety limit)
     return max(5.0, min(size, 100.0))
@@ -53,8 +53,11 @@ def _check_stop_loss_take_profit(portfolio, strat):
     else:
         return []
 
-    sl_pct = strat.get("position_sizing", {}).get("stop_loss_pct", 5.0)
-    tp_pct = strat.get("position_sizing", {}).get("take_profit_pct", 10.0)
+    pos_cfg = strat.get("position_sizing", {})
+    base_sl_pct = pos_cfg.get("stop_loss_pct", 5.0)
+    base_tp_pct = pos_cfg.get("take_profit_pct", 10.0)
+    sl_vol_mult = pos_cfg.get("stop_loss_vol_mult", 0)
+    tp_vol_mult = pos_cfg.get("take_profit_vol_mult", 0)
 
     actions = []
     for symbol, pos in pos_dict.items():
@@ -76,6 +79,25 @@ def _check_stop_loss_take_profit(portfolio, strat):
             continue
 
         pnl_pct = ((current_price / entry_price) - 1) * 100
+
+        # Volatility-adjusted stops: if vol_mult is set, compute daily vol %
+        sl_pct = base_sl_pct
+        tp_pct = base_tp_pct
+        if sl_vol_mult > 0 or tp_vol_mult > 0:
+            try:
+                from .market_data import get_klines
+                klines = get_klines(symbol, "1h", 24)
+                if klines and len(klines) >= 10:
+                    import numpy as _np
+                    closes = [float(k[4]) for k in klines]
+                    returns = _np.diff(closes) / closes[:-1]
+                    daily_vol_pct = float(_np.std(returns) * _np.sqrt(24) * 100)
+                    if sl_vol_mult > 0 and daily_vol_pct > 0:
+                        sl_pct = max(base_sl_pct, daily_vol_pct * sl_vol_mult)
+                    if tp_vol_mult > 0 and daily_vol_pct > 0:
+                        tp_pct = max(base_tp_pct, daily_vol_pct * tp_vol_mult)
+            except Exception as e:
+                logger.debug(f"Vol-based stops fallback to fixed for {symbol}: {e}")
 
         # Stop-loss: force sell if loss exceeds threshold
         if pnl_pct <= -sl_pct:
@@ -144,7 +166,7 @@ def _log_daily_pnl(portfolio):
         entry = {
             "date": today,
             "value": round(total_value, 4),
-            "cash": round(portfolio.get("cash", 0), 4),
+            "cash": round(portfolio.get("cash_balance", 0), 4),
             "positions": len(portfolio.get("positions", {})),
             "updated": datetime.now().isoformat(),
         }
@@ -183,30 +205,36 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
             symbols = DEFAULT_SYMBOLS
 
     strat = load_strategy()
-    risk_pct = strat.get("position_sizing", {}).get("risk_per_trade_pct", 2.0)
+    pos_sizing = strat.get("position_sizing", {})
+    risk_pct = pos_sizing.get("risk_per_trade_pct", 2.0)
+    cash_reserve_raw = pos_sizing.get("cash_reserve_pct", 10.0)
+    cash_reserve_pct = cash_reserve_raw / 100.0 if cash_reserve_raw > 1 else cash_reserve_raw
     timeframe = strat.get("timeframe", "1h")
 
     # Get portfolio state
     try:
         portfolio = get_portfolio_summary()
         portfolio_value = portfolio.get("total_value", 100.0)
-        cash = portfolio.get("cash", 0)
-        open_positions = portfolio.get("positions", {})
+        cash = portfolio.get("cash_balance", 0)
+        open_positions = portfolio.get("positions", [])
+        # positions is always a list of dicts from get_portfolio_summary()
         if isinstance(open_positions, list):
-            held_symbols = {p.get("symbol") for p in open_positions}
+            pos_by_symbol = {p.get("symbol"): p for p in open_positions}
         else:
-            held_symbols = set(open_positions.keys()) if isinstance(open_positions, dict) else set()
+            pos_by_symbol = open_positions
+        held_symbols = set(pos_by_symbol.keys())
     except Exception as e:
         logger.error(f"Failed to get portfolio: {e}")
         portfolio_value = 100.0
         cash = 0
+        pos_by_symbol = {}
         held_symbols = set()
 
     actions = []
     timestamp = datetime.now().isoformat()
 
     # Phase 2: Check stop-loss/take-profit on existing positions first
-    if not dry_run and open_positions:
+    if not dry_run and pos_by_symbol:
         sl_tp_actions = _check_stop_loss_take_profit(portfolio, strat)
         actions.extend(sl_tp_actions)
         # Update held_symbols after forced sells
@@ -216,7 +244,14 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
             # Refresh cash after sells
             try:
                 portfolio = get_portfolio_summary()
-                cash = portfolio.get("cash", 0)
+                cash = portfolio.get("cash_balance", 0)
+                portfolio_value = portfolio.get("total_value", 100.0)
+                # Rebuild pos_by_symbol after forced sells
+                open_positions = portfolio.get("positions", [])
+                if isinstance(open_positions, list):
+                    pos_by_symbol = {p.get("symbol"): p for p in open_positions}
+                else:
+                    pos_by_symbol = open_positions
             except Exception:
                 pass
 
@@ -251,7 +286,7 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
 
             if should_buy and not dry_run:
                 size = _position_size(portfolio_value, sig["confidence"], risk_pct)
-                size = min(size, cash * 0.9)  # Keep 10% cash reserve
+                size = min(size, cash * (1 - cash_reserve_pct))  # Keep cash reserve
                 if size >= 5:
                     result = execute_paper_trade(symbol, "BUY", size)
                     action_entry["trade"] = result
@@ -272,12 +307,12 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
 
             elif should_sell and not dry_run:
                 # Sell entire position
-                pos = open_positions.get(symbol, {})
-                if isinstance(pos, dict):
-                    qty = pos.get("quantity", 0)
-                    sell_value = qty * sig.get("price", 0)
-                else:
-                    sell_value = 50  # fallback
+                pos = pos_by_symbol.get(symbol, {})
+                qty = pos.get("quantity", 0)
+                current_price = sig.get("price", 0)
+                if not (qty > 0 and current_price > 0):
+                    logger.error(f"Cannot sell {symbol}: qty={qty}, price={current_price}")
+                sell_value = qty * current_price if qty > 0 and current_price > 0 else 0
                 if sell_value > 1:
                     result = execute_paper_trade(symbol, "SELL", sell_value)
                     action_entry["trade"] = result

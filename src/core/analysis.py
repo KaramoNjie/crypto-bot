@@ -125,10 +125,12 @@ def technical_analysis(symbol: str, interval: str = None) -> dict:
 
     bb = _bollinger(closes, period=bb_period, std_mult=bb_std)
     bb_position = None
-    if bb["upper"] and bb["lower"] and bb["upper"] != bb["lower"]:
+    if bb["upper"] is not None and bb["lower"] is not None and bb["upper"] > bb["lower"]:
         bb_position = round((current_price - bb["lower"]) / (bb["upper"] - bb["lower"]), 3)
 
     rsi_val = _rsi(closes, period=rsi_period)
+    ema12 = _ema(closes, macd_fast)
+    ema26 = _ema(closes, macd_slow)
 
     return {
         "symbol": symbol,
@@ -140,8 +142,8 @@ def technical_analysis(symbol: str, interval: str = None) -> dict:
         "bb_position": bb_position,
         "sma_20": round(sma20, 2) if sma20 else None,
         "sma_50": round(sma50, 2) if sma50 else None,
-        "ema_12": round(_ema(closes, macd_fast), 2) if _ema(closes, macd_fast) else None,
-        "ema_26": round(_ema(closes, macd_slow), 2) if _ema(closes, macd_slow) else None,
+        "ema_12": round(ema12, 2) if ema12 is not None else None,
+        "ema_26": round(ema26, 2) if ema26 is not None else None,
         "volume_ratio": round(vol_ratio, 2) if vol_ratio else None,
         "price_range_24h": {
             "high": float(max(highs[-24:])) if len(highs) >= 24 else None,

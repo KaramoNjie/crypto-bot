@@ -48,14 +48,16 @@ DEFAULT_FEE_RATE = 0.001  # 0.1% per trade (Binance maker+taker ~0.1%)
 DEFAULT_SLIPPAGE = 0.0005  # 0.05% slippage estimate
 
 _CANDLES_PER_DAY = {"15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}
-_ANN_FACTOR = {"15m": 252 * 96, "30m": 252 * 48, "1h": 252 * 24, "4h": 252 * 6, "1d": 252}
+# Crypto trades 24/7/365 — use 365.25 days, not 252 (stock market)
+_ANN_FACTOR = {"15m": 365 * 96, "30m": 365 * 48, "1h": 365 * 24, "4h": 365 * 6, "1d": 365}
 
 STRATEGIES = ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap",
               "vwap_rsi", "squeeze_vwap"]
 
 
 def _candle_count(days: int, timeframe: str) -> int:
-    return min(days * _CANDLES_PER_DAY.get(timeframe, 24), 1000)
+    """Calculate candle count. No longer capped at 1000 — pagination handles it."""
+    return days * _CANDLES_PER_DAY.get(timeframe, 24)
 
 
 # ---------------------------------------------------------------------------
@@ -63,13 +65,18 @@ def _candle_count(days: int, timeframe: str) -> int:
 # ---------------------------------------------------------------------------
 
 def _rsi(prices, period=14):
+    """RSI using Wilder's exponential smoothing (matches TradingView/standard)."""
     if len(prices) < period + 1:
         return None
     deltas = np.diff(prices)
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = np.mean(gains[-period:])
-    avg_loss = np.mean(losses[-period:])
+    gains = np.where(deltas > 0, deltas, 0.0)
+    losses = np.where(deltas < 0, -deltas, 0.0)
+    # Wilder's smoothing: seed with SMA, then exponential
+    avg_gain = np.mean(gains[:period])
+    avg_loss = np.mean(losses[:period])
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
     if avg_loss == 0:
         return 100.0
     return float(100 - (100 / (1 + avg_gain / avg_loss)))
@@ -185,12 +192,14 @@ def _backtest_rsi(closes, strat, fee_rate=0.0):
     return balance, position, trades, warmup
 
 
-def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0):
-    """Full 5-indicator weighted ensemble."""
+def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0, highs=None, lows=None):
+    """Full 7-indicator weighted ensemble — matches signals.py weights."""
     ind = strat.get("indicators", {})
     rsi_cfg = ind.get("rsi", {})
     macd_cfg = ind.get("macd", {})
     bb_cfg = ind.get("bollinger", {})
+    vwap_cfg = strat.get("vwap", {})
+    mom_cfg = strat.get("momentum", {})
 
     rsi_period = rsi_cfg.get("period", 14)
     rsi_oversold = rsi_cfg.get("oversold", 30)
@@ -201,13 +210,20 @@ def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0):
     bb_period = bb_cfg.get("period", 20)
     bb_std = bb_cfg.get("std", 2.0)
     vol_lookback = ind.get("volume_lookback", 20)
+    vwap_window = vwap_cfg.get("window", 24)
+    vwap_deviation = vwap_cfg.get("deviation_pct", 2.45)
+    breakout_period = mom_cfg.get("breakout_period", 10)
+    mom_vol_confirm = mom_cfg.get("volume_confirm", 1.5)
 
-    weights = {"rsi": 0.30, "macd": 0.25, "bb": 0.20, "ema": 0.15, "vol": 0.10}
+    # Match signals.py 7-strategy weights exactly
+    weights = {"rsi": 0.20, "macd": 0.15, "bb": 0.15,
+               "ema": 0.10, "vol": 0.05, "vwap": 0.25, "momentum": 0.10}
     sig_cfg = strat.get("signal", {})
     buy_threshold = sig_cfg.get("buy_threshold", 0.15)
     sell_threshold = sig_cfg.get("sell_threshold", -0.15)
 
-    warmup = max(macd_slow + macd_signal, bb_period, rsi_period + 1, 30)
+    warmup = max(macd_slow + macd_signal, bb_period, rsi_period + 1,
+                 vwap_window + 1, breakout_period + 1, 30)
     balance = STARTING_BALANCE
     position = 0.0
     entry_price = 0.0
@@ -217,6 +233,12 @@ def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0):
     ema9 = _ema(closes, 9)
     ema21 = _ema(closes, 21)
     macd_line, signal_line, histogram = _macd(closes, macd_fast, macd_slow, macd_signal)
+
+    # Use closes as fallback for highs/lows if not provided
+    if highs is None:
+        highs = closes
+    if lows is None:
+        lows = closes
 
     for i in range(warmup, len(closes)):
         price = closes[i]
@@ -298,6 +320,37 @@ def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0):
                 scores["vol"] = -min(vol_ratio * 0.3, 1.0)
             else:
                 scores["vol"] = 0.0
+
+        # VWAP reversion (new — matches signals.py vwap_signal)
+        if i >= vwap_window:
+            w_start = max(0, i - vwap_window + 1)
+            typical = (highs[w_start:i + 1] + lows[w_start:i + 1] + closes[w_start:i + 1]) / 3.0
+            vols = volumes[w_start:i + 1]
+            cum_vol = np.sum(vols)
+            vwap_val = np.sum(typical * vols) / cum_vol if cum_vol > 0 else price
+            dev_pct = (price - vwap_val) / vwap_val * 100 if vwap_val > 0 else 0
+            if dev_pct < -vwap_deviation:
+                depth = abs(dev_pct) / vwap_deviation
+                scores["vwap"] = min(depth * 0.5, 1.0)
+            elif dev_pct > vwap_deviation:
+                depth = dev_pct / vwap_deviation
+                scores["vwap"] = -min(depth * 0.5, 1.0)
+            else:
+                scores["vwap"] = -dev_pct / vwap_deviation * 0.2
+
+        # Momentum breakout (new — matches signals.py momentum_breakout_signal)
+        if i >= breakout_period:
+            window_high = np.max(highs[i - breakout_period:i])
+            window_low = np.min(lows[i - breakout_period:i])
+            avg_vol = np.mean(volumes[i - breakout_period:i])
+            vol_ratio = volumes[i] / avg_vol if avg_vol > 0 else 1.0
+            vol_confirmed = vol_ratio >= mom_vol_confirm
+            if price > window_high and vol_confirmed:
+                scores["momentum"] = min(0.6 + (price - window_high) / window_high * 100 * 0.1, 1.0)
+            elif price < window_low and vol_confirmed:
+                scores["momentum"] = -min(0.6 + (window_low - price) / window_low * 100 * 0.1, 1.0)
+            else:
+                scores["momentum"] = 0.0
 
         # Weighted ensemble score
         total_w = 0
@@ -758,7 +811,7 @@ def _run_strategy(closes, volumes, highs, lows, strat, strategy_mode, fee_rate=0
     if strategy_mode == "rsi":
         return _backtest_rsi(closes, strat, fee_rate)
     elif strategy_mode == "ensemble":
-        return _backtest_ensemble(closes, volumes, strat, fee_rate)
+        return _backtest_ensemble(closes, volumes, strat, fee_rate, highs=highs, lows=lows)
     elif strategy_mode == "multi_confirm":
         return _backtest_multi_confirm(closes, volumes, strat, fee_rate)
     elif strategy_mode == "momentum":
@@ -813,6 +866,16 @@ def run_backtest(symbol: str, days: int, strat: dict,
         trades_scored = [t for t in trades if t["idx"] >= test_start_idx]
     else:
         trades_scored = trades
+
+    # Force-close any open position at end (apply fees for realism)
+    if position > 0:
+        close_value = position * closes[-1] * (1 - fee_rate)
+        balance += close_value
+        trades.append({"type": "SELL", "price": float(closes[-1]),
+                       "pnl_pct": ((closes[-1] / trades[-1].get("price", closes[-1])) - 1) * 100
+                       if trades else 0,
+                       "idx": len(closes) - 1, "reason": "end_of_backtest"})
+        position = 0.0
 
     # Common metrics
     final_value = balance + (position * closes[-1])

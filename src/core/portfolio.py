@@ -19,13 +19,13 @@ def get_portfolio_summary() -> dict:
 
     for symbol, pos in guard.paper_positions.items():
         qty = pos.get("quantity", 0)
-        entry_price = pos.get("avg_price", pos.get("entry_price", 0))
+        entry_price = pos.get("avg_price") or pos.get("entry_price") or 0
         if qty <= 0:
             continue
 
         # Get current price
         ticker = get_ticker(symbol)
-        current_price = float(ticker.get("price", entry_price))
+        current_price = float(ticker.get("price") or entry_price or 0)
         market_value = qty * current_price
         cost_basis = qty * entry_price
         unrealized_pnl = market_value - cost_basis

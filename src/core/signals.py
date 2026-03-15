@@ -117,28 +117,28 @@ def macd_signal(closes: np.ndarray, fast=12, slow=26, signal_period=9) -> dict:
     macd_cross_up = macd_line[-1] > signal_line[-1] and macd_line[-2] <= signal_line[-2]
     macd_cross_down = macd_line[-1] < signal_line[-1] and macd_line[-2] >= signal_line[-2]
 
-    # Normalize histogram relative to price
+    # Normalize histogram as percentage of price (price-independent)
     price = closes[-1]
-    norm_hist = hist_now / price * 1000  # scale to readable range
+    norm_hist = (hist_now / price) * 100 if price > 0 else 0  # as % of price
 
     if macd_cross_up:
-        score = min(0.8 + abs(norm_hist) * 0.1, 1.0)
+        score = min(0.8 + abs(norm_hist), 1.0)
         confidence = 0.7
         reason = f"MACD bullish crossover (hist={hist_now:.2f})"
     elif macd_cross_down:
-        score = -min(0.8 + abs(norm_hist) * 0.1, 1.0)
+        score = -min(0.8 + abs(norm_hist), 1.0)
         confidence = 0.7
         reason = f"MACD bearish crossover (hist={hist_now:.2f})"
     elif hist_now > 0 and hist_rising:
-        score = min(norm_hist * 0.3, 0.6)
+        score = min(norm_hist * 3.0, 0.6)
         confidence = 0.4
         reason = f"MACD positive & rising (hist={hist_now:.2f})"
     elif hist_now < 0 and not hist_rising:
-        score = max(norm_hist * 0.3, -0.6)
+        score = max(norm_hist * 3.0, -0.6)
         confidence = 0.4
         reason = f"MACD negative & falling (hist={hist_now:.2f})"
     else:
-        score = norm_hist * 0.1
+        score = norm_hist * 1.0
         confidence = 0.2
         reason = f"MACD mixed (hist={hist_now:.2f})"
 
@@ -201,8 +201,8 @@ def ema_crossover_signal(closes: np.ndarray, fast_period=9, slow_period=21) -> d
     cross_up = diff_now > 0 and diff_prev <= 0
     cross_down = diff_now < 0 and diff_prev >= 0
 
-    # Normalize difference
-    norm_diff = diff_now / closes[-1] * 100
+    # Normalize difference as % of price
+    norm_diff = (diff_now / closes[-1] * 100) if closes[-1] > 0 else 0
 
     if cross_up:
         score = 0.8
@@ -264,9 +264,10 @@ def vwap_signal(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
     if len(closes) < window + 1:
         return {"score": 0.0, "confidence": 0.0, "reason": "insufficient data"}
 
-    # Rolling VWAP
-    typical = (highs[-window:] + lows[-window:] + closes[-window:]) / 3.0
-    vols = volumes[-window:]
+    # Rolling VWAP — use available data if less than full window
+    actual_window = min(window, len(closes))
+    typical = (highs[-actual_window:] + lows[-actual_window:] + closes[-actual_window:]) / 3.0
+    vols = volumes[-actual_window:]
     cum_vol = np.sum(vols)
     if cum_vol > 0:
         vwap_val = float(np.sum(typical * vols) / cum_vol)
@@ -387,7 +388,9 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
         "bollinger": bollinger_signal(closes,
                                       period=bb_cfg.get("period", 20),
                                       std_mult=bb_cfg.get("std", 2.0)),
-        "ema_cross": ema_crossover_signal(closes, fast_period=9, slow_period=21),
+        "ema_cross": ema_crossover_signal(closes,
+                                         fast_period=ind.get("ema_fast", 9),
+                                         slow_period=ind.get("ema_slow", 21)),
         "volume": volume_signal(volumes, closes,
                                 lookback=ind.get("volume_lookback", 20)),
         "vwap": vwap_signal(highs, lows, closes, volumes,
@@ -409,8 +412,8 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
     weighted_confidence = 0
     for name, sig in strategies.items():
         w = weights.get(name, 0.1)
-        weighted_score += sig["score"] * w
-        weighted_confidence += sig["confidence"] * w
+        weighted_score += sig.get("score", 0) * w
+        weighted_confidence += sig.get("confidence", 0) * w
         total_weight += w
 
     if total_weight > 0:
@@ -421,17 +424,20 @@ def generate_signal(symbol: str, timeframe: str = "1h", n_candles: int = 100) ->
         ensemble_confidence = 0.0
 
     # Agreement bonus — if most strategies agree, boost confidence
-    signs = [1 if s["score"] > 0.1 else (-1 if s["score"] < -0.1 else 0)
+    signs = [1 if s.get("score", 0) > 0.1 else (-1 if s.get("score", 0) < -0.1 else 0)
              for s in strategies.values()]
     agreement = abs(sum(signs)) / len(signs)
     ensemble_confidence = min(ensemble_confidence * (1 + agreement * 0.5), 1.0)
 
-    # Decision thresholds
-    min_conf = strat.get("signal", {}).get("min_confidence", 0.4)
+    # Decision thresholds (configurable via strategy.yaml)
+    sig_cfg = strat.get("signal", {})
+    min_conf = sig_cfg.get("min_confidence", 0.4)
+    buy_threshold = sig_cfg.get("buy_threshold", 0.15)
+    sell_threshold = sig_cfg.get("sell_threshold", -0.15)
 
-    if ensemble_score > 0.15 and ensemble_confidence >= min_conf:
+    if ensemble_score > buy_threshold and ensemble_confidence >= min_conf:
         action = "BUY"
-    elif ensemble_score < -0.15 and ensemble_confidence >= min_conf:
+    elif ensemble_score < sell_threshold and ensemble_confidence >= min_conf:
         action = "SELL"
     else:
         action = "HOLD"

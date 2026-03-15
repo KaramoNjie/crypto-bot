@@ -6,6 +6,8 @@ Used by eval_harness.py to apply a live performance adjustment to EVAL_SCORE.
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +30,21 @@ def _load_outcomes() -> list:
 def _save_outcomes(outcomes: list) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        OUTCOMES_FILE.write_text(json.dumps(outcomes, indent=2, default=str))
+        data = json.dumps(outcomes, indent=2, default=str)
+        fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
+        try:
+            os.write(fd, data.encode())
+            os.fsync(fd)
+            os.close(fd)
+            os.replace(tmp_path, str(OUTCOMES_FILE))
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
     except Exception as e:
         logger.error(f"Could not save trade_outcomes.json: {e}")
 
@@ -72,20 +88,39 @@ def log_trade_entry(order_id: str, symbol: str, quantity: float, price: float) -
     logger.debug(f"Feedback: entry logged {symbol} @ {price}")
 
 
-def log_trade_exit(symbol: str, exit_price: float, quantity: float) -> None:
-    """Match oldest open BUY for symbol, compute P&L, mark closed."""
+def log_trade_exit(symbol: str, exit_price: float, quantity: float,
+                   order_id: str = None) -> None:
+    """Match open BUY for symbol by order_id (or closest quantity), compute P&L, mark closed."""
     outcomes = _load_outcomes()
+    best_match = None
+
     for trade in outcomes:
         if (trade.get("symbol") == symbol
                 and trade.get("side") == "BUY"
                 and trade.get("status") == "open"):
-            pnl_pct = ((exit_price / trade["entry_price"]) - 1) * 100
-            trade["exit_price"] = exit_price
-            trade["pnl_pct"] = round(pnl_pct, 4)
-            trade["timestamp_exit"] = datetime.now().isoformat()
-            trade["status"] = "closed"
+            # Prefer exact order_id match
+            if order_id and trade.get("order_id") == order_id:
+                best_match = trade
+                break
+            # Otherwise match by closest quantity
+            if best_match is None:
+                best_match = trade
+            elif abs(trade.get("quantity", 0) - quantity) < abs(best_match.get("quantity", 0) - quantity):
+                best_match = trade
+
+    if best_match:
+        best_match["exit_price"] = exit_price
+        best_match["timestamp_exit"] = datetime.now().isoformat()
+        best_match["status"] = "closed"
+        entry = best_match.get("entry_price", 0)
+        if entry and entry > 0:
+            pnl_pct = ((exit_price / entry) - 1) * 100
+            best_match["pnl_pct"] = round(pnl_pct, 4)
             logger.debug(f"Feedback: exit logged {symbol} pnl={pnl_pct:+.2f}%")
-            break
+        else:
+            best_match["pnl_pct"] = None
+            logger.warning(f"Feedback: exit logged {symbol} but entry_price was 0")
+
     _save_outcomes(outcomes)
 
 

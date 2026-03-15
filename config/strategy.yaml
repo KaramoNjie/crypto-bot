@@ -16,15 +16,20 @@ indicators:
     std: 1.5            # bounds: [1.5, 3.0]
   sma_fast: 20          # bounds: [10, 30]
   sma_slow: 50          # bounds: [30, 100]
+  ema_fast: 9           # bounds: [5, 21] — EMA crossover fast period
+  ema_slow: 21          # bounds: [10, 50] — EMA crossover slow period
   volume_lookback: 20   # bounds: [10, 30]
 
 signal:
   min_confidence: 0.6   # bounds: [0.4, 0.9]
+  buy_threshold: 0.15   # bounds: [0.05, 0.4] — ensemble score to trigger BUY
+  sell_threshold: -0.15  # bounds: [-0.4, -0.05] — ensemble score to trigger SELL
   volume_filter: true   # bool
   volume_multiplier: 1.5 # bounds: [1.0, 3.0]
 
 position_sizing:
   risk_per_trade_pct: 2.0     # bounds: [0.5, 5.0] — % of portfolio per trade
+  cash_reserve_pct: 10.0      # bounds: [5.0, 30.0] — % of cash to keep as reserve
   stop_loss_pct: 5.0          # bounds: [2.0, 10.0] — hard stop-loss % from entry
   take_profit_pct: 10.0       # bounds: [3.0, 25.0] — hard take-profit % from entry
   stop_loss_vol_mult: 2.0     # bounds: [0.5, 4.0] — stop = entry - N * daily_vol

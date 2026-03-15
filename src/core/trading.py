@@ -1,6 +1,7 @@
 """Paper trade execution with safety checks."""
 
 import logging
+import math
 from datetime import datetime
 
 from .config import get_binance_client
@@ -9,6 +10,13 @@ from .market_data import get_ticker
 from .feedback import log_trade_entry, log_trade_exit
 
 logger = logging.getLogger(__name__)
+
+
+def _price_decimals(price: float) -> int:
+    """Dynamic precision: 2 decimals for BTC-size, up to 8 for micro-cap."""
+    if price <= 0:
+        return 2
+    return max(2, min(8, -int(math.floor(math.log10(price))) + 2))
 
 
 def execute_paper_trade(symbol: str, side: str, amount_usdt: float) -> dict:
@@ -75,18 +83,19 @@ def execute_paper_trade(symbol: str, side: str, amount_usdt: float) -> dict:
         save_state(guard)
 
         # Feedback loop — log entry/exit for strategy learning
+        price_dec = _price_decimals(price)
         try:
             if side == "BUY":
                 log_trade_entry(
                     order_id=order_dict.get("orderId", ""),
                     symbol=symbol,
                     quantity=round(quantity, 8),
-                    price=round(price, 2),
+                    price=round(price, price_dec),
                 )
             elif side == "SELL":
                 log_trade_exit(
                     symbol=symbol,
-                    exit_price=round(price, 2),
+                    exit_price=round(price, price_dec),
                     quantity=round(quantity, 8),
                 )
         except Exception as fb_err:
@@ -97,7 +106,7 @@ def execute_paper_trade(symbol: str, side: str, amount_usdt: float) -> dict:
             "symbol": symbol,
             "side": side,
             "quantity": round(quantity, 8),
-            "price": round(price, 2),
+            "price": round(price, price_dec),
             "amount_usdt": round(amount_usdt, 2),
             "fees": order_dict.get("fees", "0"),
             "slippage": order_dict.get("slippage", 0),

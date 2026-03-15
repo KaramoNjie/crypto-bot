@@ -239,9 +239,12 @@ class PaperTradingSafetyGuard:
                 )
 
             # 3. Order size validation
-            estimated_value = quantity * (
-                price or 50000
-            )  # Use reasonable default price
+            if price is None:
+                try:
+                    price = self._simulate_market_price(symbol)
+                except Exception:
+                    price = 50000  # last-resort fallback
+            estimated_value = quantity * price
             if estimated_value > self.config.max_order_size_usd:
                 safety_result["safe"] = False
                 safety_result["reasons"].append(
@@ -256,15 +259,30 @@ class PaperTradingSafetyGuard:
                     f"Daily trade limit reached ({self.daily_trade_count}/{self.config.max_daily_trades})"
                 )
 
-            # 5. Position limit check
-            if len(self.paper_positions) >= self.config.max_positions:
+            # 5. Position limit check (BUY only — don't block sells)
+            if side.upper() == "BUY" and len(self.paper_positions) >= self.config.max_positions:
                 safety_result["safe"] = False
                 safety_result["reasons"].append(
                     f"Maximum positions limit reached ({len(self.paper_positions)}/{self.config.max_positions})"
                 )
 
-            # 6. Balance validation (for paper trading)
-            if estimated_value > self.paper_balance:
+            # 5b. SELL quantity validation — can't sell more than owned
+            if side.upper() == "SELL":
+                pos = self.paper_positions.get(symbol, {})
+                owned_qty = pos.get("quantity", 0)
+                if owned_qty <= 0:
+                    safety_result["safe"] = False
+                    safety_result["reasons"].append(
+                        f"No position in {symbol} to sell"
+                    )
+                elif quantity > owned_qty + 1e-8:  # absolute tolerance for float rounding
+                    safety_result["safe"] = False
+                    safety_result["reasons"].append(
+                        f"Sell quantity {quantity} exceeds owned {owned_qty:.6f}"
+                    )
+
+            # 6. Balance validation (for paper trading, BUY only)
+            if side.upper() == "BUY" and estimated_value > self.paper_balance:
                 safety_result["safe"] = False
                 safety_result["reasons"].append(
                     f"Insufficient paper balance: ${self.paper_balance:.2f} < ${estimated_value:.2f}"
@@ -460,7 +478,7 @@ class PaperTradingSafetyGuard:
             if avg > 0:
                 return avg
 
-        return 0.0
+        raise ValueError(f"Cannot determine market price for {symbol} — API failed and no position data available")
 
     def _update_paper_portfolio(self, order_result: PaperOrderResult):
         """Update paper portfolio with order result"""
@@ -499,15 +517,18 @@ class PaperTradingSafetyGuard:
                     position["total_cost"] = new_total_cost
             else:
                 # Reduce position
-                position["quantity"] -= quantity
-                if position["quantity"] <= 0:
-                    # Position closed
+                old_quantity = position["quantity"]
+                if old_quantity <= 0:
                     del self.paper_positions[symbol]
                 else:
-                    # Update cost basis proportionally
-                    position["total_cost"] *= position["quantity"] / (
-                        position["quantity"] + quantity
-                    )
+                    position["quantity"] -= quantity
+                    if position["quantity"] <= 0:
+                        # Position closed
+                        del self.paper_positions[symbol]
+                    else:
+                        # Update cost basis proportionally (remaining fraction of original)
+                        remaining_fraction = position["quantity"] / old_quantity
+                        position["total_cost"] *= remaining_fraction
 
         except Exception as e:
             self.logger.log_error(

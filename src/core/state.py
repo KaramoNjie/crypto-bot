@@ -12,6 +12,7 @@ Supports separate state files for paper and live modes:
 import json
 import logging
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -90,7 +91,22 @@ def save_state(guard: PaperTradingSafetyGuard, mode: str = None) -> None:
         "saved_at": datetime.now().isoformat(),
     }
     try:
-        state_file.write_text(json.dumps(state, indent=2, default=str))
+        # Atomic write: write to temp file, then rename (prevents corruption on crash)
+        data = json.dumps(state, indent=2, default=str)
+        fd, tmp_path = tempfile.mkstemp(dir=STATE_DIR, suffix=".tmp")
+        try:
+            os.write(fd, data.encode())
+            os.fsync(fd)
+            os.close(fd)
+            os.replace(tmp_path, str(state_file))
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
         logger.debug(f"{mode.upper()} state saved: balance=${guard.paper_balance:.2f}")
     except Exception as e:
         logger.error(f"Failed to save {mode} state: {e}")
@@ -100,7 +116,8 @@ def load_state(mode: str = None) -> PaperTradingSafetyGuard:
     """Load portfolio from disk for the given mode, or create fresh one."""
     if mode is None:
         mode = get_trading_mode()
-    config = SafetyConfig(trading_mode=TradingMode.PAPER)
+    trading_mode = TradingMode.LIVE if mode == "live" else TradingMode.PAPER
+    config = SafetyConfig(trading_mode=trading_mode)
     guard = PaperTradingSafetyGuard(config)
 
     state_file = _state_file_for_mode(mode)

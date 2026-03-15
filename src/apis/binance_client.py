@@ -240,8 +240,9 @@ class BinanceClient:
                 final_price = formatted_price or execution_price
 
                 # Update paper balance with thread safety (Fix: Bug #5 Race Condition)
-                base_currency = symbol.split("/")[0]
-                quote_currency = symbol.split("/")[1]
+                if "/" not in symbol:
+                    raise ValueError(f"Invalid symbol format '{symbol}': expected 'BASE/QUOTE' (e.g. 'BTC/USDT')")
+                base_currency, quote_currency = symbol.split("/", 1)
 
                 with self._balance_lock:
                     # Initialize balance for new currencies

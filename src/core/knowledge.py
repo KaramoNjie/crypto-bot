@@ -7,6 +7,8 @@ The dashboard and agents can query this to avoid repeating mistakes.
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -28,7 +30,21 @@ def _load() -> list:
 
 def _save(entries: list) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    KNOWLEDGE_FILE.write_text(json.dumps(entries, indent=2, default=str))
+    data = json.dumps(entries, indent=2, default=str)
+    fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
+    try:
+        os.write(fd, data.encode())
+        os.fsync(fd)
+        os.close(fd)
+        os.replace(tmp_path, str(KNOWLEDGE_FILE))
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 def log_learning(category: str, title: str, detail: str,

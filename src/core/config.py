@@ -1,11 +1,15 @@
 """Singleton config and client helpers for CLI / MCP / skills."""
 
+import logging
 import os
 import functools
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from ..config.settings import Config
 from ..apis.binance_client import BinanceClient
 
-_STRATEGY_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config", "strategy.yaml")
+_STRATEGY_PATH = str(Path(__file__).resolve().parent.parent.parent / "config" / "strategy.yaml")
 
 _STRATEGY_DEFAULTS = {
     "indicators": {
@@ -30,12 +34,15 @@ def load_strategy() -> dict:
     """Load strategy params from config/strategy.yaml, falling back to defaults."""
     try:
         import yaml
-        path = os.path.abspath(_STRATEGY_PATH)
-        if os.path.exists(path):
-            with open(path) as f:
-                return yaml.safe_load(f) or _STRATEGY_DEFAULTS
-    except Exception:
-        pass
+        if os.path.exists(_STRATEGY_PATH):
+            with open(_STRATEGY_PATH) as f:
+                data = yaml.safe_load(f)
+                if data is None:
+                    logger.warning("strategy.yaml is empty, using defaults")
+                    return _STRATEGY_DEFAULTS
+                return data
+    except Exception as e:
+        logger.error(f"Failed to load strategy.yaml: {e}")
     return _STRATEGY_DEFAULTS
 
 _config = None

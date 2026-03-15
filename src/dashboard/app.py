@@ -158,14 +158,19 @@ def api_experiments():
     try:
         rows = []
         for line in tsv_path.read_text().strip().split("\n")[1:]:  # skip header
+            if not line.strip():
+                continue
             parts = line.split("\t")
             if len(parts) >= 4:
-                rows.append({
-                    "commit": parts[0],
-                    "eval_score": float(parts[1]) if parts[1] else 0,
-                    "status": parts[2],
-                    "description": parts[3],
-                })
+                try:
+                    rows.append({
+                        "commit": parts[0],
+                        "eval_score": float(parts[1]) if parts[1] else 0,
+                        "status": parts[2],
+                        "description": parts[3],
+                    })
+                except (ValueError, IndexError):
+                    continue
         return jsonify(rows)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
