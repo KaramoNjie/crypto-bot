@@ -171,6 +171,40 @@ def api_experiments():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/compare")
+def api_compare():
+    """Return strategy comparison data from --compare-all."""
+    data = _read_json(DATA_DIR.parent / "loops" / "latest_eval_v2.json")
+    if not data:
+        # Fall back: build minimal comparison from latest_eval.json
+        latest = _read_json(DATA_DIR.parent / "loops" / "latest_eval.json")
+        if latest and latest.get("aggregate"):
+            mode = latest.get("strategy_mode", "unknown")
+            data = {mode: {
+                "eval_score": latest["aggregate"].get("eval_score", 0),
+                "avg_sharpe": latest["aggregate"].get("avg_sharpe", 0),
+                "total_trades": latest["aggregate"].get("total_trades", 0),
+                "avg_pnl_pct": latest["aggregate"].get("avg_pnl_pct", 0),
+                "avg_drawdown_pct": latest["aggregate"].get("avg_drawdown_pct", 0),
+                "coverage": latest["aggregate"].get("coverage_factor", 0),
+            }}
+    return jsonify(data)
+
+
+@app.route("/api/feedback")
+def api_feedback():
+    """Return live trading feedback stats."""
+    try:
+        from src.core.feedback import get_live_stats
+        outcomes = _read_json(DATA_DIR / "trade_outcomes.json", [])
+        stats = get_live_stats()
+        stats["total_outcomes"] = len(outcomes)
+        stats["open_trades"] = sum(1 for t in outcomes if t.get("status") == "open")
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/status")
 def api_status():
     """System health check."""

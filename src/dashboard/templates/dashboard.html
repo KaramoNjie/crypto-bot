@@ -237,6 +237,38 @@ tr:last-child td { border-bottom: none; }
 /* Footer */
 .footer { text-align: center; padding: 16px; font-size: 10px; color: var(--dim); border-top: 1px solid var(--border); margin-top: 16px; }
 
+/* Strategy Comparison Bars */
+.compare-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(30,41,59,0.4); }
+.compare-row:last-child { border-bottom: none; }
+.compare-name { width: 100px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.compare-bar-track { flex: 1; height: 22px; background: var(--border); border-radius: 4px; position: relative; overflow: hidden; }
+.compare-bar-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; display: flex; align-items: center; padding-left: 6px; font-size: 10px; font-weight: 700; color: white; }
+.compare-stats { display: flex; gap: 12px; font-size: 10px; color: var(--dim); width: 180px; justify-content: flex-end; }
+.compare-best { background: var(--green-bg); border: 1px solid rgba(16,185,129,0.3); border-radius: 6px; }
+
+/* Score Chart */
+.score-chart { position: relative; height: 140px; margin: 8px 0; }
+.score-chart canvas { width: 100% !important; height: 100% !important; }
+.score-chart-fallback { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 0 4px; }
+.score-bar { flex: 1; min-width: 3px; max-width: 12px; border-radius: 2px 2px 0 0; transition: height 0.3s; position: relative; }
+.score-bar:hover { opacity: 0.8; }
+.score-bar .tooltip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 9px; white-space: nowrap; z-index: 10; }
+.score-bar:hover .tooltip { display: block; }
+
+/* Feedback Stats */
+.feedback-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.feedback-stat { text-align: center; padding: 14px 8px; background: rgba(30,41,59,0.4); border-radius: 8px; }
+.feedback-stat .metric-value { font-size: 24px; }
+.feedback-stat .metric-sub { font-size: 10px; }
+
+/* Tabs */
+.tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.tab { padding: 8px 16px; font-size: 11px; font-weight: 600; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+.tab:hover { color: var(--muted); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
 /* Loading */
 .loading { color: var(--dim); font-size: 13px; }
 .shimmer { background: linear-gradient(90deg, var(--card) 25%, #1a2332 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; height: 20px; }
@@ -396,7 +428,60 @@ tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
-<!-- Row 5: Knowledge Base -->
+<!-- Row 5: Strategy Comparison + Score Progression + Feedback -->
+<div class="section-header">
+  <span class="section-title">Training & Evaluation Data</span>
+  <span class="section-sub">Strategy comparison, score evolution, and live trade feedback</span>
+</div>
+<div class="row row-3">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Strategy Comparison</span>
+      <span class="card-badge" style="background:var(--cyan);color:var(--bg);font-size:9px;" id="compare-count">8 strategies</span>
+    </div>
+    <div id="strategy-compare"><span class="loading">Run --compare-all to generate</span></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Score Progression</span>
+      <span class="card-badge" style="background:var(--yellow-bg);color:var(--yellow);">Experiments over time</span>
+    </div>
+    <div id="score-chart"><span class="loading">No experiment data yet</span></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Live Trade Feedback</span>
+      <span class="card-badge" style="background:var(--green-bg);color:var(--green);" id="feedback-badge">--</span>
+    </div>
+    <div id="feedback-stats"><span class="loading">No live trades yet</span></div>
+  </div>
+</div>
+
+<!-- Row 6: Full Strategy Config -->
+<div class="section-header">
+  <span class="section-title">Full Configuration</span>
+  <span class="section-sub">All parameters from config/strategy.yaml</span>
+</div>
+<div class="row row-2">
+  <div class="card">
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchConfigTab('active')">Active Strategy</div>
+      <div class="tab" onclick="switchConfigTab('indicators')">Indicators</div>
+      <div class="tab" onclick="switchConfigTab('all-modes')">All Strategy Modes</div>
+    </div>
+    <div id="config-tab-active" class="tab-content active"></div>
+    <div id="config-tab-indicators" class="tab-content"></div>
+    <div id="config-tab-all-modes" class="tab-content"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Per-Coin Eval Breakdown</span>
+    </div>
+    <div id="eval-detail-table"><span class="loading">Run /autoexp to generate</span></div>
+  </div>
+</div>
+
+<!-- Row 7: Knowledge Base -->
 <div class="section-header">
   <span class="section-title">Agent Knowledge Base</span>
   <span class="section-sub" id="know-summary">What the system has learned</span>
@@ -734,11 +819,217 @@ async function loadKnowledge() {
   document.getElementById('knowledge-list').innerHTML = html;
 }
 
+// ── Strategy Comparison ──
+async function loadCompare() {
+  const d = await fetchJson(API + '/api/compare');
+  if (!d || typeof d !== 'object' || Object.keys(d).length === 0) {
+    document.getElementById('strategy-compare').innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--dim);font-size:11px;">Run: python scripts/eval_harness.py --compare-all<br>to generate strategy comparison data</div>';
+    return;
+  }
+  const entries = Object.entries(d).filter(([k,v]) => v && typeof v === 'object' && v.eval_score != null);
+  entries.sort((a,b) => (b[1].eval_score||0) - (a[1].eval_score||0));
+  document.getElementById('compare-count').textContent = entries.length + ' strategies';
+  const maxScore = Math.max(...entries.map(([k,v]) => v.eval_score||0), 0.1);
+
+  const COLORS = {vwap:'#10b981',vwap_rsi:'#06b6d4',rsi:'#3b82f6',momentum:'#f97316',multi_confirm:'#8b5cf6',ensemble:'#f59e0b',squeeze:'#ec4899',squeeze_vwap:'#6366f1'};
+
+  let html = '';
+  entries.forEach(([name, v], i) => {
+    const pct = ((v.eval_score||0) / maxScore * 100);
+    const color = COLORS[name] || 'var(--blue)';
+    const best = i === 0 ? ' compare-best' : '';
+    html += `<div class="compare-row${best}">
+      <div class="compare-name" style="color:${color}">${name.toUpperCase()}</div>
+      <div class="compare-bar-track">
+        <div class="compare-bar-fill" style="width:${pct}%;background:${color};">${fmt(v.eval_score,2)}</div>
+      </div>
+      <div class="compare-stats">
+        <span title="Sharpe">S:${fmt(v.avg_sharpe,1)}</span>
+        <span title="Trades">T:${v.total_trades||0}</span>
+        <span title="P&L">P:${fmt(v.avg_pnl_pct,1)}%</span>
+        <span title="Drawdown">DD:${fmt(v.avg_drawdown_pct,1)}%</span>
+      </div>
+    </div>`;
+  });
+  document.getElementById('strategy-compare').innerHTML = html;
+}
+
+// ── Score Progression Chart ──
+async function loadScoreChart() {
+  const d = await fetchJson(API + '/api/experiments');
+  if (!d || !Array.isArray(d) || d.length === 0) {
+    document.getElementById('score-chart').innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--dim);font-size:11px;">No experiment data yet<br>Run /autoexp to start</div>';
+    return;
+  }
+  const maxScore = Math.max(...d.map(e => e.eval_score||0), 0.1);
+  const barWidth = Math.max(3, Math.min(12, Math.floor(500 / d.length)));
+  let html = '<div class="score-chart-fallback">';
+  d.forEach((e, i) => {
+    const h = Math.max(2, (e.eval_score||0) / maxScore * 110);
+    const status = (e.status||'').toLowerCase();
+    const isKept = status === 'kept' || status === 'keep';
+    const color = isKept ? 'var(--green)' : 'var(--red)';
+    const opacity = isKept ? '1' : '0.4';
+    html += `<div class="score-bar" style="height:${h}px;background:${color};opacity:${opacity};">
+      <div class="tooltip">#${i+1}: ${fmt(e.eval_score,2)} (${e.status})<br>${(e.description||'').slice(0,50)}</div>
+    </div>`;
+  });
+  html += '</div>';
+  // Summary line
+  const kept = d.filter(e => (e.status||'').toLowerCase() === 'kept' || (e.status||'').toLowerCase() === 'keep');
+  const best = Math.max(...d.map(e => e.eval_score||0));
+  const first = d[0] ? d[0].eval_score : 0;
+  html += `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:6px;">
+    <span>${d.length} experiments</span>
+    <span>${kept.length} kept</span>
+    <span>Start: ${fmt(first,2)} &rarr; Best: <span class="green">${fmt(best,2)}</span></span>
+  </div>`;
+  document.getElementById('score-chart').innerHTML = html;
+}
+
+// ── Live Trade Feedback ──
+async function loadFeedback() {
+  const d = await fetchJson(API + '/api/feedback');
+  if (!d || d.closed_trades === 0) {
+    document.getElementById('feedback-stats').innerHTML = `<div class="feedback-grid">
+      <div class="feedback-stat"><div class="metric-value" style="color:var(--dim);">0</div><div class="metric-sub">Closed Trades</div></div>
+      <div class="feedback-stat"><div class="metric-value" style="color:var(--dim);">--</div><div class="metric-sub">Win Rate</div></div>
+      <div class="feedback-stat"><div class="metric-value" style="color:var(--dim);">--</div><div class="metric-sub">Avg P&L</div></div>
+    </div>
+    <div style="text-align:center;font-size:10px;color:var(--dim);margin-top:10px;">Need 3+ closed trades for feedback to affect EVAL_SCORE</div>`;
+    document.getElementById('feedback-badge').textContent = 'Needs data';
+    return;
+  }
+  const wr = d.win_rate != null ? (d.win_rate * 100) : null;
+  const wrClass = wr != null ? (wr >= 50 ? 'green' : 'red') : '';
+  const avgPnl = d.avg_pnl;
+  const feedbackFactor = d.closed_trades >= 3 && d.win_rate != null ? (1 + (d.win_rate - 0.5) * 0.2) : null;
+  document.getElementById('feedback-badge').textContent = d.closed_trades + ' trades';
+  document.getElementById('feedback-stats').innerHTML = `<div class="feedback-grid">
+    <div class="feedback-stat">
+      <div class="metric-value blue">${d.closed_trades}</div>
+      <div class="metric-sub">Closed Trades</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px;">${d.open_trades||0} still open</div>
+    </div>
+    <div class="feedback-stat">
+      <div class="metric-value ${wrClass}">${wr != null ? fmt(wr,0)+'%' : '--'}</div>
+      <div class="metric-sub">Win Rate</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px;">${wr != null && wr >= 50 ? 'Above' : 'Below'} 50% target</div>
+    </div>
+    <div class="feedback-stat">
+      <div class="metric-value ${avgPnl != null ? cls(avgPnl) : ''}">${avgPnl != null ? pnlSign(avgPnl)+fmt(avgPnl,2)+'%' : '--'}</div>
+      <div class="metric-sub">Avg P&L per Trade</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px;">${feedbackFactor ? 'Score adj: x'+fmt(feedbackFactor,3) : 'Need 3+ trades'}</div>
+    </div>
+  </div>`;
+}
+
+// ── Full Config Tabs ──
+function switchConfigTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('config-tab-' + tab).classList.add('active');
+}
+
+async function loadFullConfig() {
+  const d = await fetchJson(API + '/api/strategy');
+  if (!d) return;
+  const mode = d.strategy_mode || 'rsi';
+
+  // Active strategy tab
+  const activeSection = d[mode] || {};
+  let html1 = `<div style="margin-bottom:8px;"><span class="action-badge" style="background:var(--blue-bg);color:var(--blue);font-size:13px;padding:5px 14px;">${mode.toUpperCase()}</span></div><div class="config-grid">`;
+  Object.entries(activeSection).forEach(([k,v]) => {
+    html1 += `<div class="config-item"><span class="config-label">${k}</span><span class="config-value">${v}</span></div>`;
+  });
+  const ps = d.position_sizing || {};
+  html1 += `<div class="config-item"><span class="config-label">risk_per_trade</span><span class="config-value">${ps.risk_per_trade_pct||2}%</span></div>`;
+  html1 += `<div class="config-item"><span class="config-label">stop_loss</span><span class="config-value">${ps.stop_loss_vol_mult||2}x vol</span></div>`;
+  html1 += `<div class="config-item"><span class="config-label">take_profit</span><span class="config-value">${ps.take_profit_vol_mult||4}x vol</span></div>`;
+  html1 += `<div class="config-item"><span class="config-label">timeframe</span><span class="config-value">${d.timeframe||'1h'}</span></div>`;
+  html1 += '</div>';
+  document.getElementById('config-tab-active').innerHTML = html1;
+
+  // Indicators tab
+  const ind = d.indicators || {};
+  let html2 = '<div class="config-grid">';
+  const rsi = ind.rsi || {};
+  html2 += `<div class="config-item"><span class="config-label">RSI Period</span><span class="config-value">${rsi.period||14}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">RSI Oversold</span><span class="config-value">${rsi.oversold||30}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">RSI Overbought</span><span class="config-value">${rsi.overbought||70}</span></div>`;
+  const macd = ind.macd || {};
+  html2 += `<div class="config-item"><span class="config-label">MACD Fast</span><span class="config-value">${macd.fast||12}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">MACD Slow</span><span class="config-value">${macd.slow||26}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">MACD Signal</span><span class="config-value">${macd.signal||9}</span></div>`;
+  const bb = ind.bollinger || {};
+  html2 += `<div class="config-item"><span class="config-label">BB Period</span><span class="config-value">${bb.period||20}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">BB Std Dev</span><span class="config-value">${bb.std||2.0}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">SMA Fast</span><span class="config-value">${ind.sma_fast||20}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">SMA Slow</span><span class="config-value">${ind.sma_slow||50}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">Volume Lookback</span><span class="config-value">${ind.volume_lookback||20}</span></div>`;
+  const sig = d.signal || {};
+  html2 += `<div class="config-item"><span class="config-label">Min Confidence</span><span class="config-value">${sig.min_confidence||0.6}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">Volume Filter</span><span class="config-value">${sig.volume_filter ? 'ON' : 'OFF'}</span></div>`;
+  html2 += `<div class="config-item"><span class="config-label">Volume Multiplier</span><span class="config-value">${sig.volume_multiplier||1.5}x</span></div>`;
+  html2 += '</div>';
+  document.getElementById('config-tab-indicators').innerHTML = html2;
+
+  // All modes tab
+  const modes = ['vwap','vwap_rsi','momentum','squeeze','squeeze_vwap','multi_confirm'];
+  let html3 = '';
+  modes.forEach(m => {
+    const cfg = d[m];
+    if (!cfg) return;
+    const isCurrent = m === mode;
+    html3 += `<div style="margin-bottom:12px;${isCurrent ? 'background:var(--blue-bg);border-radius:8px;padding:10px;' : ''}">
+      <div style="font-size:11px;font-weight:700;color:${isCurrent ? 'var(--blue)' : 'var(--muted)'};text-transform:uppercase;margin-bottom:6px;">${m} ${isCurrent ? '(ACTIVE)' : ''}</div>
+      <div class="config-grid">`;
+    Object.entries(cfg).forEach(([k,v]) => {
+      html3 += `<div class="config-item"><span class="config-label">${k}</span><span class="config-value">${v}</span></div>`;
+    });
+    html3 += '</div></div>';
+  });
+  document.getElementById('config-tab-all-modes').innerHTML = html3 || '<span class="loading">No strategy modes configured</span>';
+}
+
+// ── Eval Detail Table ──
+async function loadEvalDetail() {
+  const d = await fetchJson(API + '/api/eval');
+  if (!d || !d.per_coin) {
+    document.getElementById('eval-detail-table').innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--dim);font-size:11px;">Run /autoexp to generate eval data</div>';
+    return;
+  }
+  let html = `<div style="font-size:11px;color:var(--dim);margin-bottom:8px;">Strategy: <strong style="color:var(--blue);">${(d.strategy_mode||'--').toUpperCase()}</strong> &bull; ${d.days||90} days &bull; ${d.timeframe||'1h'}</div>`;
+  html += '<table><tr><th>Coin</th><th>Score</th><th>Sharpe</th><th>Trades</th><th>Win Rate</th><th>P&L</th><th>Drawdown</th></tr>';
+  d.per_coin.forEach(c => {
+    html += `<tr>
+      <td style="font-weight:600;">${(c.symbol||'').replace('USDT','')}</td>
+      <td class="${cls(c.coin_score)}" style="font-weight:700;">${fmt(c.coin_score,2)}</td>
+      <td>${fmt(c.sharpe,2)}</td>
+      <td>${c.n_trades}</td>
+      <td>${c.win_rate != null ? fmt(c.win_rate*100,0)+'%' : '--'}</td>
+      <td class="${cls(c.total_pnl_pct)}">${pnlSign(c.total_pnl_pct)}${fmt(c.total_pnl_pct,1)}%</td>
+      <td class="red">${fmt(c.max_drawdown_pct,1)}%</td>
+    </tr>`;
+  });
+  html += '</table>';
+  const a = d.aggregate || {};
+  html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+    <span>Coverage: ${fmt((a.coverage_factor||0)*100,0)}%</span>
+    <span>Avg Sharpe: ${fmt(a.avg_sharpe,2)}</span>
+    <span>Total Trades: ${a.total_trades||0}</span>
+    <span>EVAL: <strong class="${cls(a.eval_score)}">${fmt(a.eval_score,2)}</strong></span>
+  </div>`;
+  document.getElementById('eval-detail-table').innerHTML = html;
+}
+
 // ── Refresh All ──
 async function refresh() {
   await Promise.all([
     loadStatus(), loadPortfolio(), loadSignals(), loadTrades(),
-    loadStrategy(), loadEval(), loadExperiments(), loadKnowledge()
+    loadStrategy(), loadEval(), loadExperiments(), loadKnowledge(),
+    loadCompare(), loadScoreChart(), loadFeedback(), loadFullConfig(), loadEvalDetail()
   ]);
   document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
 }
