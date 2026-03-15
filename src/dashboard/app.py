@@ -205,6 +205,13 @@ def api_feedback():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/daily-pnl")
+def api_daily_pnl():
+    """Return daily P&L tracking data."""
+    data = _read_json(DATA_DIR / "daily_pnl.json", [])
+    return jsonify(data)
+
+
 @app.route("/api/status")
 def api_status():
     """System health check."""

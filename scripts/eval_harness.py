@@ -28,6 +28,9 @@ Usage:
     python scripts/eval_harness.py --days 90 --strategy vwap
     python scripts/eval_harness.py --days 90 --timeframe 1h --output-json loops/latest_eval.json
     python scripts/eval_harness.py --days 90 --compare-all
+    python scripts/eval_harness.py --days 90 --fees                    # Include 0.15% transaction costs
+    python scripts/eval_harness.py --days 90 --fees --walk-forward     # Honest eval: fees + out-of-sample
+    python scripts/eval_harness.py --days 90 --walk-forward --test-ratio 0.4  # Custom test split
 """
 
 import argparse
@@ -41,6 +44,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXED_SEED = 42
 STARTING_BALANCE = 1000.0
 DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+DEFAULT_FEE_RATE = 0.001  # 0.1% per trade (Binance maker+taker ~0.1%)
+DEFAULT_SLIPPAGE = 0.0005  # 0.05% slippage estimate
 
 _CANDLES_PER_DAY = {"15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}
 _ANN_FACTOR = {"15m": 252 * 96, "30m": 252 * 48, "1h": 252 * 24, "4h": 252 * 6, "1d": 252}
@@ -147,7 +152,7 @@ def load_strategy():
 # Backtest engines per strategy
 # ---------------------------------------------------------------------------
 
-def _backtest_rsi(closes, strat):
+def _backtest_rsi(closes, strat, fee_rate=0.0):
     """Original RSI mean-reversion."""
     ind = strat.get("indicators", {})
     rsi_cfg = ind.get("rsi", {})
@@ -167,20 +172,20 @@ def _backtest_rsi(closes, strat):
         if rsi is None:
             continue
         if rsi < oversold and position == 0 and balance > 0:
-            position = balance / price
+            position = balance * (1 - fee_rate) / price
             entry_price = price
             balance = 0.0
             trades.append({"type": "BUY", "price": price, "idx": i})
         elif rsi > overbought and position > 0:
             pnl_pct = ((price / entry_price) - 1) * 100
-            balance = position * price
+            balance = position * price * (1 - fee_rate)
             trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i})
             position = 0.0
 
     return balance, position, trades, warmup
 
 
-def _backtest_ensemble(closes, volumes, strat):
+def _backtest_ensemble(closes, volumes, strat, fee_rate=0.0):
     """Full 5-indicator weighted ensemble."""
     ind = strat.get("indicators", {})
     rsi_cfg = ind.get("rsi", {})
@@ -305,20 +310,20 @@ def _backtest_ensemble(closes, volumes, strat):
 
         # Trade decision
         if ensemble_score > buy_threshold and position == 0 and balance > 0:
-            position = balance / price
+            position = balance * (1 - fee_rate) / price
             entry_price = price
             balance = 0.0
             trades.append({"type": "BUY", "price": price, "idx": i, "score": ensemble_score})
         elif ensemble_score < sell_threshold and position > 0:
             pnl_pct = ((price / entry_price) - 1) * 100
-            balance = position * price
+            balance = position * price * (1 - fee_rate)
             trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i, "score": ensemble_score})
             position = 0.0
 
     return balance, position, trades, warmup
 
 
-def _backtest_multi_confirm(closes, volumes, strat):
+def _backtest_multi_confirm(closes, volumes, strat, fee_rate=0.0):
     """Require N indicators to agree before entry."""
     ind = strat.get("indicators", {})
     rsi_cfg = ind.get("rsi", {})
@@ -405,14 +410,14 @@ def _backtest_multi_confirm(closes, volumes, strat):
         effective_sell = sell_votes + (0.5 if vol_confirmed and sell_votes > buy_votes else 0)
 
         if effective_buy >= require_agree and position == 0 and balance > 0:
-            position = balance / price
+            position = balance * (1 - fee_rate) / price
             entry_price = price
             balance = 0.0
             trades.append({"type": "BUY", "price": price, "idx": i,
                            "votes": effective_buy})
         elif effective_sell >= require_agree and position > 0:
             pnl_pct = ((price / entry_price) - 1) * 100
-            balance = position * price
+            balance = position * price * (1 - fee_rate)
             trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i,
                            "votes": effective_sell})
             position = 0.0
@@ -420,7 +425,7 @@ def _backtest_multi_confirm(closes, volumes, strat):
     return balance, position, trades, warmup
 
 
-def _backtest_momentum(closes, volumes, strat):
+def _backtest_momentum(closes, volumes, strat, fee_rate=0.0):
     """Momentum breakout — buy N-period high on volume, sell N-period low."""
     mom_cfg = strat.get("momentum", {})
     breakout_period = mom_cfg.get("breakout_period", 20)
@@ -454,14 +459,14 @@ def _backtest_momentum(closes, volumes, strat):
             # Also sell on breakdown below N-period low
             if drawdown_from_peak > trailing_stop_pct or price < period_low:
                 pnl_pct = ((price / entry_price) - 1) * 100
-                balance = position * price
+                balance = position * price * (1 - fee_rate)
                 trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i})
                 position = 0.0
 
         elif position == 0 and balance > 0:
             # Buy on breakout above N-period high with volume confirmation
             if price > period_high and vol_ratio >= volume_confirm:
-                position = balance / price
+                position = balance * (1 - fee_rate) / price
                 entry_price = price
                 peak_price = price
                 balance = 0.0
@@ -471,7 +476,7 @@ def _backtest_momentum(closes, volumes, strat):
     return balance, position, trades, warmup
 
 
-def _backtest_squeeze(closes, volumes, strat):
+def _backtest_squeeze(closes, volumes, strat, fee_rate=0.0):
     """Bollinger squeeze → breakout."""
     bb_cfg = strat.get("indicators", {}).get("bollinger", {})
     sq_cfg = strat.get("squeeze", {})
@@ -519,7 +524,7 @@ def _backtest_squeeze(closes, volumes, strat):
                 # Confirm with volume
                 avg_vol = np.mean(volumes[max(0, i - vol_lookback):i])
                 if avg_vol > 0 and volumes[i] / avg_vol >= 1.3:
-                    position = balance / price
+                    position = balance * (1 - fee_rate) / price
                     entry_price = price
                     balance = 0.0
                     trades.append({"type": "BUY", "price": price, "idx": i,
@@ -535,14 +540,14 @@ def _backtest_squeeze(closes, volumes, strat):
             # Sell if price > upper band (overextended) or drops below SMA
             if price > upper or price < sma:
                 pnl_pct = ((price / entry_price) - 1) * 100
-                balance = position * price
+                balance = position * price * (1 - fee_rate)
                 trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i})
                 position = 0.0
 
     return balance, position, trades, warmup
 
 
-def _backtest_vwap(closes, highs, lows, volumes, strat):
+def _backtest_vwap(closes, highs, lows, volumes, strat, fee_rate=0.0):
     """VWAP reversion with RSI confirmation."""
     vwap_cfg = strat.get("vwap", {})
     rsi_cfg = strat.get("indicators", {}).get("rsi", {})
@@ -582,7 +587,7 @@ def _backtest_vwap(closes, highs, lows, volumes, strat):
         if position == 0 and balance > 0:
             # BUY: price significantly below VWAP + RSI oversold
             if dev_pct < -deviation and rsi < rsi_oversold:
-                position = balance / price
+                position = balance * (1 - fee_rate) / price
                 entry_price = price
                 balance = 0.0
                 trades.append({"type": "BUY", "price": price, "idx": i,
@@ -593,7 +598,7 @@ def _backtest_vwap(closes, highs, lows, volumes, strat):
             if (dev_pct > deviation and rsi > rsi_overbought) or \
                (dev_pct > 0 and rsi > 55):  # take profit at VWAP reversion
                 pnl_pct = ((price / entry_price) - 1) * 100
-                balance = position * price
+                balance = position * price * (1 - fee_rate)
                 trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct, "idx": i,
                                "vwap": round(vwap_val, 2), "dev": round(dev_pct, 2)})
                 position = 0.0
@@ -601,7 +606,7 @@ def _backtest_vwap(closes, highs, lows, volumes, strat):
     return balance, position, trades, warmup
 
 
-def _backtest_vwap_rsi(closes, highs, lows, volumes, strat):
+def _backtest_vwap_rsi(closes, highs, lows, volumes, strat, fee_rate=0.0):
     """Hybrid: VWAP for entry timing, RSI for exit confirmation.
 
     Entry: price < VWAP * (1 - deviation) AND RSI < oversold (VWAP entry)
@@ -644,7 +649,7 @@ def _backtest_vwap_rsi(closes, highs, lows, volumes, strat):
         # ENTRY: VWAP deviation + RSI oversold
         if position == 0 and balance > 0:
             if dev_pct < -deviation and rsi < entry_rsi_threshold:
-                position = balance / price
+                position = balance * (1 - fee_rate) / price
                 entry_price = price
                 balance = 0.0
                 trades.append({"type": "BUY", "price": price, "idx": i,
@@ -654,7 +659,7 @@ def _backtest_vwap_rsi(closes, highs, lows, volumes, strat):
         elif position > 0:
             if rsi > exit_rsi_threshold:
                 pnl_pct = ((price / entry_price) - 1) * 100
-                balance = position * price
+                balance = position * price * (1 - fee_rate)
                 trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct,
                                "idx": i, "rsi": round(rsi, 1)})
                 position = 0.0
@@ -662,7 +667,7 @@ def _backtest_vwap_rsi(closes, highs, lows, volumes, strat):
     return balance, position, trades, warmup
 
 
-def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat):
+def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat, fee_rate=0.0):
     """Selective high-conviction: squeeze breakout entries, VWAP exit.
 
     Entry: Bollinger squeeze detected → breakout above SMA + volume confirm
@@ -716,7 +721,7 @@ def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat):
                     # Volume confirmation
                     avg_vol = np.mean(volumes[max(0, i - vol_lookback):i])
                     if avg_vol > 0 and volumes[i] / avg_vol >= 1.3:
-                        position = balance / price
+                        position = balance * (1 - fee_rate) / price
                         entry_price = price
                         balance = 0.0
                         trades.append({"type": "BUY", "price": price, "idx": i,
@@ -736,7 +741,7 @@ def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat):
 
             if stop_hit or profit_at_vwap:
                 pnl_pct = ((price / entry_price) - 1) * 100
-                balance = position * price
+                balance = position * price * (1 - fee_rate)
                 trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct,
                                "idx": i, "reason": "stop" if stop_hit else "vwap_tp"})
                 position = 0.0
@@ -748,9 +753,41 @@ def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat):
 # Unified backtest runner
 # ---------------------------------------------------------------------------
 
+def _run_strategy(closes, volumes, highs, lows, strat, strategy_mode, fee_rate=0.0):
+    """Dispatch to the correct backtest strategy function."""
+    if strategy_mode == "rsi":
+        return _backtest_rsi(closes, strat, fee_rate)
+    elif strategy_mode == "ensemble":
+        return _backtest_ensemble(closes, volumes, strat, fee_rate)
+    elif strategy_mode == "multi_confirm":
+        return _backtest_multi_confirm(closes, volumes, strat, fee_rate)
+    elif strategy_mode == "momentum":
+        return _backtest_momentum(closes, volumes, strat, fee_rate)
+    elif strategy_mode == "squeeze":
+        return _backtest_squeeze(closes, volumes, strat, fee_rate)
+    elif strategy_mode == "vwap":
+        return _backtest_vwap(closes, highs, lows, volumes, strat, fee_rate)
+    elif strategy_mode == "vwap_rsi":
+        return _backtest_vwap_rsi(closes, highs, lows, volumes, strat, fee_rate)
+    elif strategy_mode == "squeeze_vwap":
+        return _backtest_squeeze_vwap(closes, highs, lows, volumes, strat, fee_rate)
+    else:
+        raise ValueError(f"Unknown strategy mode: {strategy_mode}")
+
+
 def run_backtest(symbol: str, days: int, strat: dict,
-                 timeframe: str = "1h", strategy_mode: str = "rsi") -> dict:
-    """Run backtest for one symbol using the specified strategy mode."""
+                 timeframe: str = "1h", strategy_mode: str = "rsi",
+                 fee_rate: float = 0.0, walk_forward: bool = False,
+                 test_ratio: float = 0.33) -> dict:
+    """Run backtest for one symbol using the specified strategy mode.
+
+    Args:
+        fee_rate: Transaction cost per trade (0.001 = 0.1%). Applied on both buy and sell.
+        walk_forward: If True, only score trades in the out-of-sample test window.
+                      The strategy still runs on all data for indicator warmup,
+                      but only trades in the last `test_ratio` of candles count.
+        test_ratio: Fraction of data used as out-of-sample test (default 33%).
+    """
     np.random.seed(FIXED_SEED)
 
     from src.core.market_data import get_klines
@@ -766,43 +803,45 @@ def run_backtest(symbol: str, days: int, strat: dict,
     highs = np.array([float(k[2]) for k in klines])
     lows = np.array([float(k[3]) for k in klines])
 
-    # Dispatch to strategy
-    if strategy_mode == "rsi":
-        balance, position, trades, warmup = _backtest_rsi(closes, strat)
-    elif strategy_mode == "ensemble":
-        balance, position, trades, warmup = _backtest_ensemble(closes, volumes, strat)
-    elif strategy_mode == "multi_confirm":
-        balance, position, trades, warmup = _backtest_multi_confirm(closes, volumes, strat)
-    elif strategy_mode == "momentum":
-        balance, position, trades, warmup = _backtest_momentum(closes, volumes, strat)
-    elif strategy_mode == "squeeze":
-        balance, position, trades, warmup = _backtest_squeeze(closes, volumes, strat)
-    elif strategy_mode == "vwap":
-        balance, position, trades, warmup = _backtest_vwap(closes, highs, lows, volumes, strat)
-    elif strategy_mode == "vwap_rsi":
-        balance, position, trades, warmup = _backtest_vwap_rsi(closes, highs, lows, volumes, strat)
-    elif strategy_mode == "squeeze_vwap":
-        balance, position, trades, warmup = _backtest_squeeze_vwap(closes, highs, lows, volumes, strat)
+    # Run full backtest (indicators need full data for warmup)
+    balance, position, trades, warmup = _run_strategy(
+        closes, volumes, highs, lows, strat, strategy_mode, fee_rate)
+
+    # Walk-forward: only count trades in the test window
+    test_start_idx = int(len(closes) * (1 - test_ratio)) if walk_forward else 0
+    if walk_forward:
+        trades_scored = [t for t in trades if t["idx"] >= test_start_idx]
     else:
-        raise ValueError(f"Unknown strategy mode: {strategy_mode}")
+        trades_scored = trades
 
     # Common metrics
     final_value = balance + (position * closes[-1])
     total_pnl_pct = ((final_value / STARTING_BALANCE) - 1) * 100
 
     # Reconstruct portfolio values for drawdown + Sharpe
-    values = _reconstruct_values(closes, volumes, highs, lows, strat, warmup, strategy_mode)
+    values = _reconstruct_values(closes, volumes, highs, lows, strat, warmup,
+                                 strategy_mode, fee_rate)
 
-    peak = np.maximum.accumulate(values)
-    drawdown = ((values - peak) / peak) * 100
+    # For walk-forward, only measure Sharpe/drawdown in the test window
+    if walk_forward and test_start_idx > warmup:
+        wf_offset = test_start_idx - warmup
+        if wf_offset < len(values):
+            values_scored = values[wf_offset:]
+        else:
+            values_scored = values
+    else:
+        values_scored = values
+
+    peak = np.maximum.accumulate(values_scored)
+    drawdown = ((values_scored - peak) / peak) * 100
     max_drawdown_pct = float(abs(np.min(drawdown)))
 
-    sells = [t for t in trades if t["type"] == "SELL"]
+    sells = [t for t in trades_scored if t["type"] == "SELL"]
     n_trades = len(sells)
     win_rate = sum(1 for t in sells if t.get("pnl_pct", 0) > 0) / n_trades if n_trades > 0 else 0.0
 
     ann_factor = _ANN_FACTOR.get(timeframe, 252 * 24)
-    period_returns = np.diff(values) / values[:-1]
+    period_returns = np.diff(values_scored) / values_scored[:-1]
     sharpe = 0.0
     if len(period_returns) > 1 and np.std(period_returns) > 0:
         sharpe = float((np.mean(period_returns) / np.std(period_returns)) * np.sqrt(ann_factor))
@@ -811,7 +850,7 @@ def run_backtest(symbol: str, days: int, strat: dict,
     drawdown_penalty = 1 - (max_drawdown_pct / 100)
     coin_score = sharpe * drawdown_penalty * trade_factor
 
-    return {
+    result = {
         "symbol": symbol,
         "strategy": strategy_mode,
         "timeframe": timeframe,
@@ -824,29 +863,23 @@ def run_backtest(symbol: str, days: int, strat: dict,
         "win_rate": round(win_rate, 4),
         "coin_score": round(coin_score, 4),
     }
+    if walk_forward:
+        result["walk_forward"] = True
+        result["test_start_idx"] = test_start_idx
+        result["test_candles"] = len(closes) - test_start_idx
+    if fee_rate > 0:
+        result["fee_rate"] = fee_rate
+
+    return result
 
 
-def _reconstruct_values(closes, volumes, highs, lows, strat, warmup, strategy_mode):
+def _reconstruct_values(closes, volumes, highs, lows, strat, warmup,
+                        strategy_mode, fee_rate=0.0):
     """Replay strategy to get portfolio value series for Sharpe/drawdown."""
-    # We need to re-run the strategy to track values at each candle.
-    # This duplicates logic but keeps metrics accurate.
-    if strategy_mode == "rsi":
-        balance, position, trades, _ = _backtest_rsi(closes, strat)
-    elif strategy_mode == "ensemble":
-        balance, position, trades, _ = _backtest_ensemble(closes, volumes, strat)
-    elif strategy_mode == "multi_confirm":
-        balance, position, trades, _ = _backtest_multi_confirm(closes, volumes, strat)
-    elif strategy_mode == "momentum":
-        balance, position, trades, _ = _backtest_momentum(closes, volumes, strat)
-    elif strategy_mode == "squeeze":
-        balance, position, trades, _ = _backtest_squeeze(closes, volumes, strat)
-    elif strategy_mode == "vwap":
-        balance, position, trades, _ = _backtest_vwap(closes, highs, lows, volumes, strat)
-    elif strategy_mode == "vwap_rsi":
-        balance, position, trades, _ = _backtest_vwap_rsi(closes, highs, lows, volumes, strat)
-    elif strategy_mode == "squeeze_vwap":
-        balance, position, trades, _ = _backtest_squeeze_vwap(closes, highs, lows, volumes, strat)
-    else:
+    try:
+        balance, position, trades, _ = _run_strategy(
+            closes, volumes, highs, lows, strat, strategy_mode, fee_rate)
+    except ValueError:
         return np.array([STARTING_BALANCE])
 
     # Build trade index for fast lookup
@@ -862,11 +895,11 @@ def _reconstruct_values(closes, volumes, highs, lows, strat, warmup, strategy_mo
         if i in trade_events:
             t = trade_events[i]
             if t["type"] == "BUY" and tp == 0 and tb > 0:
-                tp = tb / price
+                tp = tb * (1 - fee_rate) / price
                 ep = price
                 tb = 0.0
             elif t["type"] == "SELL" and tp > 0:
-                tb = tp * price
+                tb = tp * price * (1 - fee_rate)
                 tp = 0.0
         values.append(tb + tp * price)
 
@@ -889,7 +922,15 @@ def main():
     parser.add_argument("--output-json", default=None)
     parser.add_argument("--compare-all", action="store_true",
                         help="Run ALL strategies and compare scores")
+    parser.add_argument("--fees", action="store_true",
+                        help="Include transaction costs (0.1%% fee + 0.05%% slippage per trade)")
+    parser.add_argument("--walk-forward", action="store_true",
+                        help="Walk-forward validation: score only on out-of-sample test window")
+    parser.add_argument("--test-ratio", type=float, default=0.33,
+                        help="Fraction of data for out-of-sample test (default: 0.33)")
     args = parser.parse_args()
+
+    fee_rate = (DEFAULT_FEE_RATE + DEFAULT_SLIPPAGE) if args.fees else 0.0
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
 
@@ -897,8 +938,18 @@ def main():
         strat = load_strategy()
 
         if args.compare_all:
-            _compare_all(symbols, args.days, strat, args.timeframe, args.output_json)
+            _compare_all(symbols, args.days, strat, args.timeframe, args.output_json,
+                         fee_rate=fee_rate, walk_forward=args.walk_forward,
+                         test_ratio=args.test_ratio)
             return
+
+        if args.fees or args.walk_forward:
+            mode_desc = []
+            if args.fees:
+                mode_desc.append(f"fees={fee_rate:.2%}")
+            if args.walk_forward:
+                mode_desc.append(f"walk-forward(test={args.test_ratio:.0%})")
+            print(f"  Mode: {', '.join(mode_desc)}", file=sys.stderr)
 
         strategy_mode = args.strategy or strat.get("strategy_mode", "rsi")
 
@@ -909,7 +960,10 @@ def main():
             try:
                 metrics = run_backtest(symbol, args.days, strat,
                                        timeframe=args.timeframe,
-                                       strategy_mode=strategy_mode)
+                                       strategy_mode=strategy_mode,
+                                       fee_rate=fee_rate,
+                                       walk_forward=args.walk_forward,
+                                       test_ratio=args.test_ratio)
                 results.append(metrics)
                 print(f"  {symbol} ({args.timeframe}/{strategy_mode}): "
                       f"score={metrics['coin_score']} sharpe={metrics['sharpe']} "
@@ -987,10 +1041,17 @@ def main():
         sys.exit(1)
 
 
-def _compare_all(symbols, days, strat, timeframe, output_json):
+def _compare_all(symbols, days, strat, timeframe, output_json,
+                 fee_rate=0.0, walk_forward=False, test_ratio=0.33):
     """Run all strategies and print comparison table."""
+    mode_label = ""
+    if fee_rate > 0:
+        mode_label += f" [fees={fee_rate:.2%}]"
+    if walk_forward:
+        mode_label += f" [walk-forward test={test_ratio:.0%}]"
+
     print(f"\n{'Strategy':<16} {'EVAL_SCORE':>10} {'Sharpe':>8} {'Trades':>7} "
-          f"{'PnL%':>8} {'MaxDD%':>8} {'Coverage':>9}", file=sys.stderr)
+          f"{'PnL%':>8} {'MaxDD%':>8} {'Coverage':>9}{mode_label}", file=sys.stderr)
     print("-" * 72, file=sys.stderr)
 
     all_results = {}
@@ -1000,7 +1061,10 @@ def _compare_all(symbols, days, strat, timeframe, output_json):
             try:
                 metrics = run_backtest(symbol, days, strat,
                                        timeframe=timeframe,
-                                       strategy_mode=strategy_mode)
+                                       strategy_mode=strategy_mode,
+                                       fee_rate=fee_rate,
+                                       walk_forward=walk_forward,
+                                       test_ratio=test_ratio)
                 results.append(metrics)
             except Exception:
                 pass

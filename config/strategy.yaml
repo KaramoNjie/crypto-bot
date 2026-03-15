@@ -25,6 +25,8 @@ signal:
 
 position_sizing:
   risk_per_trade_pct: 2.0     # bounds: [0.5, 5.0] — % of portfolio per trade
+  stop_loss_pct: 5.0          # bounds: [2.0, 10.0] — hard stop-loss % from entry
+  take_profit_pct: 10.0       # bounds: [3.0, 25.0] — hard take-profit % from entry
   stop_loss_vol_mult: 2.0     # bounds: [0.5, 4.0] — stop = entry - N * daily_vol
   take_profit_vol_mult: 4.0   # bounds: [1.0, 8.0] — TP = entry + N * daily_vol
 
