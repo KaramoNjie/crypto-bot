@@ -143,16 +143,30 @@ def trade(
     side: str = typer.Argument(..., help="BUY or SELL"),
     symbol: str = typer.Argument(..., help="Trading pair e.g. BTCUSDT"),
     amount: float = typer.Argument(..., help="Amount in USDT"),
+    live: bool = typer.Option(False, "--live", help="Use live trading wallet"),
 ):
-    """Execute a paper trade."""
+    """Execute a paper trade (or live with --live flag)."""
     from .core.trading import execute_paper_trade
+    from .core.state import get_trading_mode, set_trading_mode
 
-    console.print(f"[bold]Executing paper {side.upper()} {symbol} ${amount:,.2f}...[/bold]")
+    mode = "live" if live else get_trading_mode()
+
+    if mode == "live":
+        console.print("[red bold]LIVE MODE[/red bold] — using live wallet")
+        if not typer.confirm(f"Confirm LIVE {side.upper()} {symbol} ${amount:,.2f}?"):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+        # Temporarily switch to live mode for this trade
+        prev = set_trading_mode("live")
+
+    mode_label = "[red]LIVE[/red]" if mode == "live" else "[cyan]PAPER[/cyan]"
+    console.print(f"[bold]Executing {mode_label} {side.upper()} {symbol} ${amount:,.2f}...[/bold]")
     result = execute_paper_trade(symbol, side, amount)
 
     if result.get("status") == "FILLED":
+        title = "Live Trade Executed" if mode == "live" else "Paper Trade Executed"
         console.print(Panel(
-            f"[green]FILLED[/green]\n"
+            f"[green]FILLED[/green] ({mode.upper()} MODE)\n"
             f"Symbol: {result['symbol']}\n"
             f"Side: {result['side']}\n"
             f"Quantity: {result['quantity']}\n"
@@ -160,8 +174,8 @@ def trade(
             f"Amount: ${result['amount_usdt']:,.2f}\n"
             f"Fees: {result['fees']}\n"
             f"Balance After: ${result['balance_after']:,.2f}",
-            title="Paper Trade Executed",
-            border_style="green",
+            title=title,
+            border_style="green" if mode == "paper" else "red",
         ))
     else:
         console.print(Panel(
@@ -174,22 +188,28 @@ def trade(
 
 @app.command()
 def portfolio():
-    """View paper portfolio summary."""
+    """View portfolio summary for current trading mode."""
     from .core.portfolio import get_portfolio_summary
+    from .core.state import get_trading_mode
 
-    console.print("[bold]Loading portfolio...[/bold]")
+    mode = get_trading_mode()
+    mode_label = "LIVE" if mode == "live" else "PAPER"
+    mode_color = "red" if mode == "live" else "blue"
+
+    console.print(f"[bold]Loading {mode_label} portfolio...[/bold]")
     data = get_portfolio_summary()
 
     # Summary
     pnl_color = "green" if data["total_pnl"] >= 0 else "red"
     console.print(Panel(
+        f"Mode: {mode_label}\n"
         f"Cash: ${data['cash_balance']:,.2f}\n"
         f"Positions: ${data['total_position_value']:,.2f}\n"
         f"Total Value: ${data['total_value']:,.2f}\n"
         f"P&L: [{pnl_color}]${data['total_pnl']:+,.2f} ({data['total_pnl_pct']:+.2f}%)[/{pnl_color}]\n"
         f"Open Positions: {data['position_count']}",
-        title="Paper Portfolio",
-        border_style="blue",
+        title=f"{mode_label} Portfolio",
+        border_style=mode_color,
     ))
 
     # Positions table
@@ -517,16 +537,30 @@ def auto_trade(
     dry_run: bool = typer.Option(False, help="Show signals without trading"),
     discover: bool = typer.Option(False, "--discover", "-d",
                                   help="Auto-discover top pairs each scan"),
+    live: bool = typer.Option(False, "--live",
+                              help="Use live trading wallet"),
 ):
     """Start autonomous multi-currency trading loop. Use --discover for dynamic pair selection."""
     from .core.auto_trader import run_loop
+    from .core.state import get_trading_mode, set_trading_mode
+
+    mode = "live" if live else get_trading_mode()
+
+    if mode == "live" and not dry_run:
+        console.print("[red bold]WARNING: LIVE TRADING MODE[/red bold]")
+        console.print("This will execute real trades on the live wallet.")
+        if not typer.confirm("Are you sure you want to trade in LIVE mode?"):
+            console.print("[dim]Cancelled. Use --dry-run to preview signals.[/dim]")
+            return
+        set_trading_mode("live")
 
     if dry_run:
         console.print("[yellow]DRY RUN — signals only, no trades[/yellow]")
     if discover:
         console.print("[cyan]AUTO-DISCOVER MODE — scanning all Binance for top pairs[/cyan]")
 
-    console.print(f"[bold]Starting auto-trader[/bold] "
+    mode_label = "[red]LIVE[/red]" if mode == "live" else "[cyan]PAPER[/cyan]"
+    console.print(f"[bold]Starting auto-trader[/bold] {mode_label} "
                   f"(interval={interval}s, min_conf={min_confidence:.0%})")
     run_loop(interval_seconds=interval, min_confidence=min_confidence,
              max_iterations=iterations, auto_discover=discover)
@@ -539,15 +573,74 @@ def dashboard():
     run_dashboard()
 
 
-@app.command("reset-portfolio")
-def reset_portfolio():
-    """Reset paper portfolio to fresh $100."""
-    from .core.state import reset_state, save_state
+@app.command("trading-mode")
+def trading_mode(
+    mode: str = typer.Argument(None, help="Set mode: 'paper' or 'live'"),
+):
+    """Show or switch trading mode (paper/live). Each has its own wallet."""
+    from .core.state import get_trading_mode, set_trading_mode, load_state
 
-    console.print("[yellow]Resetting paper portfolio to $100.00...[/yellow]")
-    guard = reset_state()
-    save_state(guard)
-    console.print("[green]Portfolio reset. Balance: $100.00, 0 positions.[/green]")
+    current = get_trading_mode()
+
+    if mode is None:
+        # Show current mode and both wallet balances
+        mode_color = "red" if current == "live" else "cyan"
+        console.print(f"Current trading mode: [{mode_color}]{current.upper()}[/{mode_color}]")
+
+        paper_guard = load_state("paper")
+        live_guard = load_state("live")
+
+        table = Table(title="Wallet Balances")
+        table.add_column("Mode", style="cyan")
+        table.add_column("Cash", justify="right")
+        table.add_column("Positions", justify="right")
+        table.add_column("Active", justify="center")
+
+        table.add_row(
+            "PAPER", f"${paper_guard.paper_balance:,.2f}",
+            str(len(paper_guard.paper_positions)),
+            "[green]***[/green]" if current == "paper" else "",
+        )
+        table.add_row(
+            "LIVE", f"${live_guard.paper_balance:,.2f}",
+            str(len(live_guard.paper_positions)),
+            "[red]***[/red]" if current == "live" else "",
+        )
+        console.print(table)
+        console.print("\n[dim]Switch: python -m src.cli trading-mode paper|live[/dim]")
+        return
+
+    if mode == "live":
+        console.print("[red bold]Switching to LIVE mode[/red bold]")
+        console.print("Live mode uses a separate wallet. All trades will be logged separately.")
+        if not typer.confirm("Switch to LIVE trading mode?"):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    result = set_trading_mode(mode)
+    mode_color = "red" if mode == "live" else "cyan"
+    console.print(f"[bold]Switched: {result['previous'].upper()} -> [{mode_color}]{result['current'].upper()}[/{mode_color}][/bold]")
+
+
+@app.command("reset-portfolio")
+def reset_portfolio(
+    mode: str = typer.Option(None, help="Reset specific mode: 'paper' or 'live'"),
+):
+    """Reset portfolio to fresh $100. Defaults to current mode."""
+    from .core.state import reset_state, save_state, get_trading_mode
+
+    target = mode or get_trading_mode()
+    mode_label = "LIVE" if target == "live" else "PAPER"
+
+    if target == "live":
+        if not typer.confirm(f"Reset {mode_label} wallet to $100? This cannot be undone."):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    console.print(f"[yellow]Resetting {mode_label} portfolio to $100.00...[/yellow]")
+    guard = reset_state(target)
+    save_state(guard, target)
+    console.print(f"[green]{mode_label} portfolio reset. Balance: $100.00, 0 positions.[/green]")
 
 
 @app.command()

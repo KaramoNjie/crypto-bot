@@ -205,6 +205,17 @@ def api_feedback():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/trading-mode")
+def api_trading_mode():
+    """Return current trading mode (paper/live)."""
+    try:
+        from src.core.state import get_trading_mode
+        mode = get_trading_mode()
+        return jsonify({"mode": mode})
+    except Exception as e:
+        return jsonify({"mode": "paper", "error": str(e)})
+
+
 @app.route("/api/daily-pnl")
 def api_daily_pnl():
     """Return daily P&L tracking data."""
