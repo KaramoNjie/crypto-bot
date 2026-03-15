@@ -29,12 +29,20 @@ You can also override via `--strategy <mode>` CLI flag.
 
 Available strategies: rsi, ensemble, multi_confirm, momentum, squeeze, vwap, vwap_rsi, squeeze_vwap
 
-To compare all strategies at once:
+### Honest eval (optional but recommended for final validation)
 ```bash
-python scripts/eval_harness.py --days 90 --timeframe 1h --compare-all
+# With transaction costs (0.15% per trade)
+python scripts/eval_harness.py --days 90 --timeframe 1h --fees --output-json loops/latest_eval.json
+
+# With walk-forward validation (score only on out-of-sample last 33%)
+python scripts/eval_harness.py --days 90 --timeframe 1h --fees --walk-forward
+
+# Compare all 8 strategies head-to-head
+python scripts/eval_harness.py --days 90 --timeframe 1h --compare-all --fees --walk-forward
 ```
 
 Tests all 4 coins: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT on 1h candles.
+Note: walk-forward scores will be lower than in-sample — this is expected and more honest.
 
 ## Experiment loop (repeat)
 For each iteration:

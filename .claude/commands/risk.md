@@ -10,4 +10,7 @@ Explain the output:
 - Risk level and what it means for position sizing
 - Volatility context (daily and annualized)
 - VaR: the expected max loss with 95% confidence over 1 day
-- Recommended stop loss and take profit levels
+- Recommended position size based on 2% risk budget
+- Stop loss (-5% hard limit) and take profit (+10% hard limit) levels
+- Current Fear & Greed sentiment context
+- If risk is HIGH or VERY_HIGH, explicitly warn the user

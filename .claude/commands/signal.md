@@ -1,4 +1,4 @@
-Generate a trading signal for a cryptocurrency pair with full analysis and risk assessment.
+Generate a trading signal for a cryptocurrency pair using the 7-strategy ensemble engine.
 
 1. Execute:
    ```
@@ -7,7 +7,12 @@ Generate a trading signal for a cryptocurrency pair with full analysis and risk 
    Default symbol is BTCUSDT if none provided.
 
 2. Interpret the data and give a clear BUY / SELL / HOLD recommendation with:
-   - Confidence level (low/medium/high)
-   - Key reasons from RSI, MACD, Bollinger Bands, news sentiment
-   - Suggested entry price, stop loss, and take profit levels
+   - Confidence level (low/medium/high) based on ensemble score
+   - Per-strategy breakdown: which of the 7 strategies agree (VWAP, RSI, MACD, BB, Momentum, EMA, Volume)
+   - Suggested entry price, stop loss (-5% default), and take profit (+10% default) levels
    - Whether this aligns with Fear & Greed context
+
+3. Note the current trading mode (paper/live) — check with:
+   ```
+   cd /home/amo/Documents/crypto-bot && python -m src.cli trading-mode
+   ```

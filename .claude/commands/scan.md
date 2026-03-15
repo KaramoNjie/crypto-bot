@@ -1,42 +1,38 @@
 # /scan — Multi-Coin Market Scanner
 
-Scan multiple coins simultaneously and rank by signal strength. Use at the start
-of each trading session to find the best setup.
+Scan multiple coins using the 7-strategy ensemble engine and rank by signal strength.
+Use at the start of each trading session to find the best setup.
 
 ## Default coins
 BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT
 
 ## Steps
 
-1. Run signals for all coins in parallel using the CLI:
+1. Run the ensemble signal scanner:
    ```bash
-   python -m src.cli signal BTCUSDT &
-   python -m src.cli signal ETHUSDT &
-   python -m src.cli signal SOLUSDT &
-   python -m src.cli signal BNBUSDT &
-   wait
+   cd /home/amo/Documents/crypto-bot && python -m src.cli signals
    ```
-   Or run them sequentially if parallel causes issues.
+   This scans all coins through the 7-strategy ensemble (VWAP, RSI, MACD, BB, Momentum, EMA, Volume).
 
-2. For each coin, extract and score:
-   - RSI score: distance from 50 (closer to 30 = more bullish, closer to 70 = caution)
-   - MACD score: histogram value (positive and rising = bullish)
-   - BB score: position < 0.5 = near lower band (oversold opportunity)
-   - Fear/Greed context (same for all coins)
+   For auto-discovering top pairs by volume/momentum:
+   ```bash
+   cd /home/amo/Documents/crypto-bot && python -m src.cli signals --discover
+   ```
 
-3. Rank coins by composite signal strength (0-10 scale):
-   - Score 8-10: Strong setup, worth trading
-   - Score 5-7: Moderate, proceed with caution
-   - Score 0-4: Weak or no setup
+2. Also check trading mode and portfolio:
+   ```bash
+   cd /home/amo/Documents/crypto-bot && python -m src.cli trading-mode
+   cd /home/amo/Documents/crypto-bot && python -m src.cli portfolio
+   ```
 
-4. Present as a ranked table:
+3. Present results as a ranked table showing:
+   - Each coin's ensemble score and confidence
+   - Per-strategy breakdown (VWAP, RSI, MACD, BB, EMA, Volume)
+   - BUY / SELL / HOLD action
 
-   | Rank | Symbol | Price | RSI | MACD Hist | BB Pos | Score | Signal |
-   |------|--------|-------|-----|-----------|--------|-------|--------|
-   | 1    | ...    | ...   | ... | ...       | ...    | ...   | BUY/SELL/HOLD |
+4. Recommend the top 1-2 coins to trade with reasoning.
+   - Consider diversification
+   - Note current mode (paper/live)
+   - Account for stop-loss (-5%) and take-profit (+10%) levels
 
-5. Recommend the top 1-2 coins to trade with reasoning.
-   - Consider diversification (don't always pick BTC if ETH has a better setup)
-   - Note any coins to avoid and why
-
-6. Suggest position sizes scaled to $100 account (30% max per position = $30).
+5. Suggest position sizes scaled to portfolio (max $100 per trade, keep 10% cash reserve).
