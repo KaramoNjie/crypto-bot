@@ -24,17 +24,23 @@ python scripts/eval_harness.py --days 90 --timeframe 1h --output-json loops/late
 grep "^EVAL_SCORE:" loops/run.log
 ```
 
+The harness reads `strategy_mode` from strategy.yaml to decide which strategy to backtest.
+You can also override via `--strategy <mode>` CLI flag.
+
+Available strategies: rsi, ensemble, multi_confirm, momentum, squeeze, vwap, vwap_rsi, squeeze_vwap
+
+To compare all strategies at once:
+```bash
+python scripts/eval_harness.py --days 90 --timeframe 1h --compare-all
+```
+
 Tests all 4 coins: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT on 1h candles.
-EVAL_SCORE = mean(per-coin scores) * coverage_factor * feedback_factor
-  per-coin     = sharpe * (1 - drawdown/100) * min(n_trades/10, 1.0)
-  coverage     = fraction of coins that produced ≥1 trade
-  feedback     = 1 + (live_win_rate - 0.5) * 0.2  (±10%, needs ≥3 live trades)
-A strategy that only works on BTC gets 0.25x penalty on the aggregate score.
 
 ## Experiment loop (repeat)
 For each iteration:
 1. **Hypothesis** — one small, coherent change to `config/strategy.yaml`.
-   Examples: RSI period 14→18, tighten stop_loss_vol_mult, change rsi_oversold threshold.
+   Examples: change strategy_mode, tune VWAP deviation, adjust RSI thresholds,
+   change ensemble weights, try different momentum breakout period.
    Document reasoning in the commit message.
 2. **Apply** — edit `config/strategy.yaml` ONLY.
 3. **Commit**:
@@ -80,10 +86,25 @@ See bounds comments in `config/strategy.yaml`. Never go outside them.
 | risk_per_trade_pct | 0.5 | 5.0 |
 | stop_loss_vol_mult | 0.5 | 4.0 |
 | take_profit_vol_mult | 1.0 | 8.0 |
+| vwap.deviation_pct | 0.5 | 5.0 |
+| vwap.window | 12 | 96 |
+| vwap.rsi_oversold | 20 | 45 |
+| vwap.rsi_overbought | 55 | 80 |
+| momentum.breakout_period | 5 | 50 |
+| momentum.volume_confirm | 1.0 | 3.0 |
+| momentum.trailing_stop_pct | 1.0 | 10.0 |
+| squeeze.width_threshold | 0.01 | 0.06 |
+| squeeze.squeeze_candles | 3 | 15 |
+| multi_confirm.require_agree | 2 | 5 |
+| vwap_rsi.entry_deviation | 0.5 | 5.0 |
+| vwap_rsi.entry_rsi | 20 | 45 |
+| vwap_rsi.exit_rsi | 55 | 85 |
 
 ## Strategy hints
 - Change one parameter at a time (easier to attribute causality)
-- If RSI/EMA tuning shows no improvement after 5 tries, change the oversold/overbought thresholds
+- VWAP reversion is currently the best strategy (EVAL_SCORE ~3.8)
+- Try switching strategy_mode to test different trading philosophies
+- If parameter tuning stalls, try a different strategy_mode entirely
 - Strategies with n_trades < 5 over 90 days are likely overfitting
 - Note negative results in commit messages so future iterations skip them
 - A good session = 10–20 experiments (~6–12/hour)

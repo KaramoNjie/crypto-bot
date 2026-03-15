@@ -12,7 +12,7 @@ User <-> Claude Code (reasoning + skills + MCP)
               |       |
               |       +-- src/cli.py (Typer CLI backbone — 13 commands)
               |               |
-              |               +-- src/core/signals.py     (5-strategy ensemble engine)
+              |               +-- src/core/signals.py     (7-strategy ensemble engine)
               |               +-- src/core/market_data.py  (Binance API data)
               |               +-- src/core/analysis.py     (technicals + news)
               |               +-- src/core/trading.py      (paper trade execution)
@@ -56,17 +56,19 @@ python -m src.cli dashboard                # Start web dashboard
 python -m src.cli learnings                # Agent knowledge base
 ```
 
-## Signal Engine (5-Strategy Ensemble)
+## Signal Engine (7-Strategy Ensemble)
 
-The signal engine in `src/core/signals.py` combines 5 independent strategies:
+The signal engine in `src/core/signals.py` combines 7 independent strategies:
 
 | Strategy | Weight | What it does |
 |----------|--------|-------------|
-| RSI Mean Reversion | 30% | Buy oversold, sell overbought |
-| MACD Momentum | 25% | Histogram direction + crossovers |
-| Bollinger Bands | 20% | Price at band extremes + squeeze detection |
-| EMA Crossover | 15% | 9/21 EMA trend following |
-| Volume Spike | 10% | Unusual volume confirms breakouts |
+| VWAP Reversion | 25% | Buy when price deviates below VWAP, sell on reversion |
+| RSI Mean Reversion | 20% | Buy oversold, sell overbought |
+| MACD Momentum | 15% | Histogram direction + crossovers |
+| Bollinger Bands | 15% | Price at band extremes + squeeze detection |
+| Momentum Breakout | 10% | N-period high/low breakout + volume confirmation |
+| EMA Crossover | 10% | 9/21 EMA trend following |
+| Volume Spike | 5% | Unusual volume confirms breakouts |
 
 Output: BUY / SELL / HOLD with confidence (0-100%) and per-strategy breakdown.
 
@@ -83,9 +85,11 @@ Auto-refreshes every 30 seconds.
 
 The autoresearch system (`/autoexp`) follows the Karpathy pattern:
 1. One mutable file: `config/strategy.yaml`
-2. Immutable eval harness: `scripts/eval_harness.py`
+2. Eval harness: `scripts/eval_harness.py` (8 strategy modes, `--compare-all` for head-to-head)
 3. Loop: hypothesis → edit → eval → keep if better, revert if worse
 4. EVAL_SCORE = mean(per-coin) * coverage * feedback
+5. Available strategies: rsi, ensemble, multi_confirm, momentum, squeeze, vwap, vwap_rsi, squeeze_vwap
+6. Best strategy: VWAP reversion (EVAL_SCORE 3.81, 43% better than RSI 2.65)
 
 Trade feedback loop (`src/core/feedback.py`):
 - Logs every BUY entry and SELL exit
@@ -118,13 +122,13 @@ Trade feedback loop (`src/core/feedback.py`):
 | Path | Purpose |
 |------|---------|
 | `src/cli.py` | CLI backbone (13 commands) |
-| `src/core/signals.py` | 5-strategy ensemble signal engine |
+| `src/core/signals.py` | 7-strategy ensemble signal engine |
 | `src/core/auto_trader.py` | Autonomous trading loop |
 | `src/core/feedback.py` | Trade outcome learning |
 | `src/core/knowledge.py` | Agent knowledge tracker |
 | `src/dashboard/app.py` | Flask web dashboard |
 | `config/strategy.yaml` | Tunable strategy parameters |
-| `scripts/eval_harness.py` | Immutable backtest eval |
+| `scripts/eval_harness.py` | Multi-strategy backtest eval (8 modes) |
 | `loops/program.md` | Autoexp instructions |
 | `src/safety/paper_trading.py` | Paper trading safety guard |
 | `.claude/commands/` | Claude Code slash commands |

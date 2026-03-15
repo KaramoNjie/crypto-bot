@@ -1,11 +1,13 @@
 """Multi-strategy ensemble signal engine.
 
-Combines 5 independent strategies into a single weighted signal:
-  1. RSI Mean Reversion — buy oversold, sell overbought
-  2. MACD Momentum — histogram direction and crossovers
-  3. Bollinger Band Squeeze — price at band extremes
-  4. EMA Crossover — trend following (fast/slow EMA)
-  5. Volume Spike — unusual volume confirms breakouts
+Combines 7 independent strategies into a single weighted signal:
+  1. VWAP Reversion — buy when price deviates below VWAP, sell on reversion
+  2. RSI Mean Reversion — buy oversold, sell overbought
+  3. MACD Momentum — histogram direction and crossovers
+  4. Bollinger Band Squeeze — price at band extremes
+  5. Momentum Breakout — N-period high/low breakout + volume confirmation
+  6. EMA Crossover — trend following (fast/slow EMA)
+  7. Volume Spike — unusual volume confirms breakouts
 
 Each strategy outputs a score in [-1, +1] and a confidence in [0, 1].
 The ensemble averages them with configurable weights.
