@@ -31,13 +31,8 @@ position_sizing:
 timeframe: "1h"         # allowed: ["15m", "30m", "1h", "4h"]
 
 # --- Strategy mode for v2 eval harness ---
-# allowed: ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap"]
+# allowed: ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap", "vwap_rsi", "squeeze_vwap"]
 strategy_mode: "vwap"
-
-# Ensemble thresholds (used when strategy_mode = "ensemble")
-# signal:
-#   buy_threshold: 0.15    # bounds: [0.05, 0.4]
-#   sell_threshold: -0.15  # bounds: [-0.4, -0.05]
 
 # Multi-indicator confirmation (strategy_mode = "multi_confirm")
 multi_confirm:
@@ -54,19 +49,19 @@ squeeze:
   width_threshold: 0.03    # bounds: [0.01, 0.06] — BB width below this = squeeze
   squeeze_candles: 3       # bounds: [3, 15] — consecutive candles in squeeze
 
-# VWAP reversion (strategy_mode = "vwap")
+# VWAP reversion (strategy_mode = "vwap") — BEST STRATEGY
 vwap:
-  deviation_pct: 2.5       # bounds: [0.5, 5.0] — % deviation from VWAP to trigger
+  deviation_pct: 2.45      # bounds: [0.5, 5.0] — % deviation from VWAP to trigger
   window: 24               # bounds: [12, 96] — rolling VWAP window (candles)
   rsi_oversold: 44         # bounds: [20, 45] — RSI confirmation for buy
   rsi_overbought: 70       # bounds: [55, 80] — RSI confirmation for sell
 
 # Hybrid VWAP entry + RSI exit (strategy_mode = "vwap_rsi")
 vwap_rsi:
-  entry_deviation: 2.5
+  entry_deviation: 2.5     # bounds: [0.5, 5.0] — VWAP deviation for entry
   vwap_window: 24          # bounds: [12, 96]
-  entry_rsi: 45
-  exit_rsi: 63
+  entry_rsi: 45            # bounds: [20, 45] — RSI < this to enter
+  exit_rsi: 63             # bounds: [55, 85] — RSI > this to exit
 
 # Squeeze entry + VWAP exit (strategy_mode = "squeeze_vwap")
 squeeze_vwap:
