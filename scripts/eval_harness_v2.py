@@ -38,7 +38,8 @@ DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
 _CANDLES_PER_DAY = {"15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}
 _ANN_FACTOR = {"15m": 252 * 96, "30m": 252 * 48, "1h": 252 * 24, "4h": 252 * 6, "1d": 252}
 
-STRATEGIES = ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap"]
+STRATEGIES = ["rsi", "ensemble", "multi_confirm", "momentum", "squeeze", "vwap",
+              "vwap_rsi", "squeeze_vwap"]
 
 
 def _candle_count(days: int, timeframe: str) -> int:
@@ -593,6 +594,149 @@ def _backtest_vwap(closes, highs, lows, volumes, strat):
     return balance, position, trades, warmup
 
 
+def _backtest_vwap_rsi(closes, highs, lows, volumes, strat):
+    """Hybrid: VWAP for entry timing, RSI for exit confirmation.
+
+    Entry: price < VWAP * (1 - deviation) AND RSI < oversold (VWAP entry)
+    Exit:  RSI > overbought (RSI exit — let profits run until RSI says stop)
+    This combines VWAP's superior entry timing with RSI's trend-following exits.
+    """
+    vwap_cfg = strat.get("vwap", {})
+    rsi_cfg = strat.get("indicators", {}).get("rsi", {})
+    hybrid_cfg = strat.get("vwap_rsi", {})
+
+    deviation = hybrid_cfg.get("entry_deviation", vwap_cfg.get("deviation_pct", 2.5))
+    vwap_window = hybrid_cfg.get("vwap_window", vwap_cfg.get("window", 24))
+    entry_rsi_threshold = hybrid_cfg.get("entry_rsi", vwap_cfg.get("rsi_oversold", 44))
+    exit_rsi_threshold = hybrid_cfg.get("exit_rsi", rsi_cfg.get("overbought", 69))
+    rsi_period = rsi_cfg.get("period", 17)
+
+    warmup = max(vwap_window + 1, rsi_period + 1, 30)
+    balance = STARTING_BALANCE
+    position = 0.0
+    entry_price = 0.0
+    trades = []
+
+    for i in range(warmup, len(closes)):
+        price = closes[i]
+
+        # Rolling VWAP
+        w_start = max(0, i - vwap_window + 1)
+        typical = (highs[w_start:i + 1] + lows[w_start:i + 1] + closes[w_start:i + 1]) / 3.0
+        vols = volumes[w_start:i + 1]
+        cum_vol = np.sum(vols)
+        vwap_val = np.sum(typical * vols) / cum_vol if cum_vol > 0 else price
+
+        dev_pct = (price - vwap_val) / vwap_val * 100 if vwap_val > 0 else 0
+
+        # RSI
+        rsi = _rsi(closes[:i + 1], period=rsi_period)
+        if rsi is None:
+            continue
+
+        # ENTRY: VWAP deviation + RSI oversold
+        if position == 0 and balance > 0:
+            if dev_pct < -deviation and rsi < entry_rsi_threshold:
+                position = balance / price
+                entry_price = price
+                balance = 0.0
+                trades.append({"type": "BUY", "price": price, "idx": i,
+                               "vwap": round(vwap_val, 2), "rsi": round(rsi, 1)})
+
+        # EXIT: RSI overbought (let profits run)
+        elif position > 0:
+            if rsi > exit_rsi_threshold:
+                pnl_pct = ((price / entry_price) - 1) * 100
+                balance = position * price
+                trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct,
+                               "idx": i, "rsi": round(rsi, 1)})
+                position = 0.0
+
+    return balance, position, trades, warmup
+
+
+def _backtest_squeeze_vwap(closes, highs, lows, volumes, strat):
+    """Selective high-conviction: squeeze breakout entries, VWAP exit.
+
+    Entry: Bollinger squeeze detected → breakout above SMA + volume confirm
+    Exit:  Price reverts to VWAP (take profit) or drops below entry - stop_pct
+    Fewer trades but each should be high quality.
+    """
+    bb_cfg = strat.get("indicators", {}).get("bollinger", {})
+    sq_cfg = strat.get("squeeze", {})
+    vwap_cfg = strat.get("vwap", {})
+    sv_cfg = strat.get("squeeze_vwap", {})
+
+    bb_period = bb_cfg.get("period", 20)
+    bb_std = bb_cfg.get("std", 1.5)
+    squeeze_threshold = sv_cfg.get("width_threshold", sq_cfg.get("width_threshold", 0.03))
+    squeeze_candles = sv_cfg.get("squeeze_candles", sq_cfg.get("squeeze_candles", 3))
+    vwap_window = sv_cfg.get("vwap_window", vwap_cfg.get("window", 24))
+    stop_pct = sv_cfg.get("stop_pct", 3.0)
+    vol_lookback = strat.get("indicators", {}).get("volume_lookback", 20)
+
+    warmup = max(bb_period + squeeze_candles, vol_lookback + 1, vwap_window + 1, 35)
+    balance = STARTING_BALANCE
+    position = 0.0
+    entry_price = 0.0
+    trades = []
+
+    # Pre-compute BB widths
+    widths = []
+    for i in range(len(closes)):
+        if i < bb_period:
+            widths.append(999.0)
+        else:
+            window = closes[i - bb_period + 1:i + 1]
+            sma = np.mean(window)
+            std = np.std(window)
+            widths.append((2 * bb_std * std) / sma if sma > 0 else 999.0)
+    widths = np.array(widths)
+
+    for i in range(warmup, len(closes)):
+        price = closes[i]
+
+        if position == 0 and balance > 0:
+            # Check for squeeze → breakout
+            recent_widths = widths[i - squeeze_candles:i]
+            was_squeezed = np.all(recent_widths < squeeze_threshold)
+            expanding = widths[i] > squeeze_threshold and was_squeezed
+
+            if expanding:
+                window_c = closes[i - bb_period + 1:i + 1]
+                sma = np.mean(window_c)
+                if price > sma:
+                    # Volume confirmation
+                    avg_vol = np.mean(volumes[max(0, i - vol_lookback):i])
+                    if avg_vol > 0 and volumes[i] / avg_vol >= 1.3:
+                        position = balance / price
+                        entry_price = price
+                        balance = 0.0
+                        trades.append({"type": "BUY", "price": price, "idx": i,
+                                       "width": round(widths[i], 4)})
+
+        elif position > 0:
+            # Rolling VWAP for exit
+            w_start = max(0, i - vwap_window + 1)
+            typical = (highs[w_start:i + 1] + lows[w_start:i + 1] + closes[w_start:i + 1]) / 3.0
+            vols = volumes[w_start:i + 1]
+            cum_vol = np.sum(vols)
+            vwap_val = np.sum(typical * vols) / cum_vol if cum_vol > 0 else price
+
+            # Exit: price above VWAP (profit taken) or stop loss
+            stop_hit = price < entry_price * (1 - stop_pct / 100)
+            profit_at_vwap = price > vwap_val and price > entry_price
+
+            if stop_hit or profit_at_vwap:
+                pnl_pct = ((price / entry_price) - 1) * 100
+                balance = position * price
+                trades.append({"type": "SELL", "price": price, "pnl_pct": pnl_pct,
+                               "idx": i, "reason": "stop" if stop_hit else "vwap_tp"})
+                position = 0.0
+
+    return balance, position, trades, warmup
+
+
 # ---------------------------------------------------------------------------
 # Unified backtest runner
 # ---------------------------------------------------------------------------
@@ -628,6 +772,10 @@ def run_backtest(symbol: str, days: int, strat: dict,
         balance, position, trades, warmup = _backtest_squeeze(closes, volumes, strat)
     elif strategy_mode == "vwap":
         balance, position, trades, warmup = _backtest_vwap(closes, highs, lows, volumes, strat)
+    elif strategy_mode == "vwap_rsi":
+        balance, position, trades, warmup = _backtest_vwap_rsi(closes, highs, lows, volumes, strat)
+    elif strategy_mode == "squeeze_vwap":
+        balance, position, trades, warmup = _backtest_squeeze_vwap(closes, highs, lows, volumes, strat)
     else:
         raise ValueError(f"Unknown strategy mode: {strategy_mode}")
 
@@ -687,6 +835,10 @@ def _reconstruct_values(closes, volumes, highs, lows, strat, warmup, strategy_mo
         balance, position, trades, _ = _backtest_squeeze(closes, volumes, strat)
     elif strategy_mode == "vwap":
         balance, position, trades, _ = _backtest_vwap(closes, highs, lows, volumes, strat)
+    elif strategy_mode == "vwap_rsi":
+        balance, position, trades, _ = _backtest_vwap_rsi(closes, highs, lows, volumes, strat)
+    elif strategy_mode == "squeeze_vwap":
+        balance, position, trades, _ = _backtest_squeeze_vwap(closes, highs, lows, volumes, strat)
     else:
         return np.array([STARTING_BALANCE])
 

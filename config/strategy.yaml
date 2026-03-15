@@ -60,3 +60,17 @@ vwap:
   window: 24               # bounds: [12, 96] — rolling VWAP window (candles)
   rsi_oversold: 44         # bounds: [20, 45] — RSI confirmation for buy
   rsi_overbought: 70       # bounds: [55, 80] — RSI confirmation for sell
+
+# Hybrid VWAP entry + RSI exit (strategy_mode = "vwap_rsi")
+vwap_rsi:
+  entry_deviation: 2.5
+  vwap_window: 24          # bounds: [12, 96]
+  entry_rsi: 45
+  exit_rsi: 63
+
+# Squeeze entry + VWAP exit (strategy_mode = "squeeze_vwap")
+squeeze_vwap:
+  width_threshold: 0.03    # bounds: [0.01, 0.06]
+  squeeze_candles: 3       # bounds: [3, 15]
+  vwap_window: 24          # bounds: [12, 96]
+  stop_pct: 3.0            # bounds: [1.0, 8.0] — stop loss %
