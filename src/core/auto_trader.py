@@ -6,19 +6,23 @@ Or via CLI: python -m src.cli auto-trade
 Scans all coins every interval, executes when confidence > threshold.
 """
 
+import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, date
+from pathlib import Path
 
 from .signals import generate_signal, scan_all, discover_top_pairs
 from .trading import execute_paper_trade
 from .portfolio import get_portfolio_summary
 from .knowledge import log_trade_learning, log_learning
 from .config import load_strategy
+from .market_data import get_ticker
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+DAILY_PNL_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "daily_pnl.json"
 
 
 def _position_size(portfolio_value: float, confidence: float,
@@ -34,6 +38,126 @@ def _position_size(portfolio_value: float, confidence: float,
     size = base * scale
     # Clamp to $5 min, $100 max (safety limit)
     return max(5.0, min(size, 100.0))
+
+
+def _check_stop_loss_take_profit(portfolio, strat):
+    """Check all open positions for stop-loss or take-profit triggers.
+
+    Returns list of forced sell actions taken.
+    """
+    positions = portfolio.get("positions", {})
+    if isinstance(positions, list):
+        pos_dict = {p.get("symbol"): p for p in positions}
+    elif isinstance(positions, dict):
+        pos_dict = positions
+    else:
+        return []
+
+    sl_pct = strat.get("position_sizing", {}).get("stop_loss_pct", 5.0)
+    tp_pct = strat.get("position_sizing", {}).get("take_profit_pct", 10.0)
+
+    actions = []
+    for symbol, pos in pos_dict.items():
+        if not pos or pos.get("quantity", 0) <= 0:
+            continue
+
+        entry_price = pos.get("avg_price", 0)
+        if entry_price <= 0:
+            continue
+
+        try:
+            ticker = get_ticker(symbol)
+            current_price = float(ticker.get("price", 0))
+        except Exception as e:
+            logger.warning(f"Could not get price for {symbol} stop-loss check: {e}")
+            continue
+
+        if current_price <= 0:
+            continue
+
+        pnl_pct = ((current_price / entry_price) - 1) * 100
+
+        # Stop-loss: force sell if loss exceeds threshold
+        if pnl_pct <= -sl_pct:
+            reason = f"STOP-LOSS triggered at {pnl_pct:+.2f}% (threshold: -{sl_pct}%)"
+            logger.warning(f"{symbol}: {reason}")
+            try:
+                sell_value = pos["quantity"] * current_price
+                if sell_value > 1:
+                    result = execute_paper_trade(symbol, "SELL", sell_value)
+                    actions.append({
+                        "symbol": symbol, "signal": "SELL", "reason": "stop_loss",
+                        "pnl_pct": round(pnl_pct, 2), "executed": True,
+                        "trade": result, "timestamp": datetime.now().isoformat(),
+                    })
+                    log_trade_learning(
+                        symbol=symbol, action="SELL", outcome="stop_loss",
+                        lesson=f"Stop-loss {symbol} @ ${current_price:.2f} "
+                               f"(entry=${entry_price:.2f}, P&L={pnl_pct:+.2f}%)",
+                    )
+            except Exception as e:
+                logger.error(f"Stop-loss sell failed for {symbol}: {e}")
+
+        # Take-profit: force sell if gain exceeds threshold
+        elif pnl_pct >= tp_pct:
+            reason = f"TAKE-PROFIT triggered at {pnl_pct:+.2f}% (threshold: +{tp_pct}%)"
+            logger.info(f"{symbol}: {reason}")
+            try:
+                sell_value = pos["quantity"] * current_price
+                if sell_value > 1:
+                    result = execute_paper_trade(symbol, "SELL", sell_value)
+                    actions.append({
+                        "symbol": symbol, "signal": "SELL", "reason": "take_profit",
+                        "pnl_pct": round(pnl_pct, 2), "executed": True,
+                        "trade": result, "timestamp": datetime.now().isoformat(),
+                    })
+                    log_trade_learning(
+                        symbol=symbol, action="SELL", outcome="take_profit",
+                        lesson=f"Take-profit {symbol} @ ${current_price:.2f} "
+                               f"(entry=${entry_price:.2f}, P&L={pnl_pct:+.2f}%)",
+                    )
+            except Exception as e:
+                logger.error(f"Take-profit sell failed for {symbol}: {e}")
+
+    return actions
+
+
+def _log_daily_pnl(portfolio):
+    """Log daily portfolio value for consistency tracking."""
+    today = date.today().isoformat()
+    total_value = portfolio.get("total_value", 0)
+
+    try:
+        if DAILY_PNL_PATH.exists():
+            data = json.loads(DAILY_PNL_PATH.read_text())
+        else:
+            data = []
+    except Exception:
+        data = []
+
+    # Update today's entry or add new one
+    existing = next((d for d in data if d["date"] == today), None)
+    if existing:
+        existing["value"] = round(total_value, 4)
+        existing["updated"] = datetime.now().isoformat()
+    else:
+        entry = {
+            "date": today,
+            "value": round(total_value, 4),
+            "cash": round(portfolio.get("cash", 0), 4),
+            "positions": len(portfolio.get("positions", {})),
+            "updated": datetime.now().isoformat(),
+        }
+        # Add daily change if we have previous data
+        if data:
+            prev_value = data[-1].get("value", total_value)
+            entry["daily_pnl"] = round(total_value - prev_value, 4)
+            entry["daily_pnl_pct"] = round(
+                ((total_value / prev_value) - 1) * 100, 4) if prev_value > 0 else 0
+        data.append(entry)
+
+    DAILY_PNL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DAILY_PNL_PATH.write_text(json.dumps(data, indent=2))
 
 
 def check_and_trade(symbols=None, min_confidence: float = 0.5,
@@ -80,6 +204,27 @@ def check_and_trade(symbols=None, min_confidence: float = 0.5,
 
     actions = []
     timestamp = datetime.now().isoformat()
+
+    # Phase 2: Check stop-loss/take-profit on existing positions first
+    if not dry_run and open_positions:
+        sl_tp_actions = _check_stop_loss_take_profit(portfolio, strat)
+        actions.extend(sl_tp_actions)
+        # Update held_symbols after forced sells
+        if sl_tp_actions:
+            sold_symbols = {a["symbol"] for a in sl_tp_actions if a.get("executed")}
+            held_symbols -= sold_symbols
+            # Refresh cash after sells
+            try:
+                portfolio = get_portfolio_summary()
+                cash = portfolio.get("cash", 0)
+            except Exception:
+                pass
+
+    # Log daily P&L
+    try:
+        _log_daily_pnl(portfolio)
+    except Exception as e:
+        logger.debug(f"Daily P&L log failed: {e}")
 
     for symbol in symbols:
         try:
