@@ -6,7 +6,7 @@ indicators:
   rsi:
     period: 17          # bounds: [7, 30]
     overbought: 69      # bounds: [60, 85]
-    oversold: 21        # bounds: [15, 40]
+    oversold: 22        # bounds: [15, 40]
   macd:
     fast: 12            # bounds: [5, 21]
     slow: 26            # bounds: [15, 50]
